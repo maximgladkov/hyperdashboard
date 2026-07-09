@@ -275,11 +275,11 @@ function buildBuckets(win, activeLedger) {
   const get = (k, t) => { if (!map.has(k)) map.set(k, { k, t, lastPnl:null, dep:0, wd:0 }); return map.get(k); };
   for (const p of pts) get(keyOf(p.t), p.t).lastPnl = p.v;
   for (const ev of activeLedger||[]) {
-    const ty = ev?.delta?.type, amt = Math.abs(+(ev?.delta?.usdc ?? 0));
-    if (ty !== "deposit" && ty !== "withdraw") continue;
+    const f = flowOf(ev);
+    if (!f) continue;
     if (win && (ev.time < win.start || ev.time > win.end)) continue;
     const b = get(keyOf(ev.time), ev.time);
-    if (ty === "deposit") b.dep += amt; else b.wd += amt;
+    if (f.dir === "in") b.dep += f.amt; else b.wd += f.amt;
   }
   const arr = [...map.values()].sort((a,b) => a.t - b.t);
   let prev = pts.length ? pts[0].v : 0;
@@ -289,6 +289,28 @@ function buildBuckets(win, activeLedger) {
     b.label = labelOf(b.t);
   }
   return { arr, daily };
+}
+
+// Classify a ledger event as external capital flow. Bridge withdrawals are
+// type "withdraw"; direct sends to another Hyperliquid address (e.g. an
+// exchange's HL deposit address) are internalTransfer/spotTransfer/usdSend —
+// external only when the destination isn't this account. Own sub-account,
+// perp↔spot and vault moves stay internal and are excluded.
+function flowOf(ev) {
+  const d = ev?.delta || {};
+  const ty = d.type;
+  const me = (currentUser || "").toLowerCase();
+  const amt = Math.abs(+(d.usdc ?? d.usdcValue ?? d.amount ?? 0));
+  if (!amt) return null;
+  if (ty === "deposit") return { dir:"in", kind:"Deposit", amt };
+  if (ty === "withdraw") return { dir:"out", kind:"Withdrawal", amt, fee:+d.fee||0 };
+  if (ty === "internalTransfer" || ty === "spotTransfer" || ty === "usdSend" || ty === "send") {
+    const dest = (d.destination || "").toLowerCase();
+    const from = (d.user || "").toLowerCase();
+    if (dest && dest !== me) return { dir:"out", kind:"Transfer out", amt, fee:+d.fee||0, to:d.destination };
+    if (dest === me && from && from !== me) return { dir:"in", kind:"Transfer in", amt };
+  }
+  return null;
 }
 
 function byCoin(fills) {
@@ -314,14 +336,14 @@ function render() {
   const nTrades = coins.reduce((s,c)=>s+c.trades,0);
   const fundTot = (activeFunding||[]).reduce((s,f)=>s+(+f?.delta?.usdc||0),0);
   const positions = (D.clearing?.assetPositions||[]).map(p=>p.position).filter(p=>+p.szi!==0);
-  const flows = { dep:0, depN:0, wd:0, wdN:0, other:0, recent:[] };
+  const flows = { dep:0, depN:0, wd:0, wdN:0, recent:[] };
   for (const ev of activeLedger||[]) {
-    const ty = ev?.delta?.type, amt = +(ev?.delta?.usdc ?? 0);
-    if (ty === "deposit") { flows.dep += Math.abs(amt); flows.depN++; }
-    else if (ty === "withdraw") { flows.wd += Math.abs(amt); flows.wdN++; flows.recent.push(ev); }
-    else if (amt) { flows.other += amt; }
+    const f = flowOf(ev);
+    if (!f) continue;
+    if (f.dir === "in") { flows.dep += f.amt; flows.depN++; }
+    else { flows.wd += f.amt; flows.wdN++; flows.recent.push({ t:ev.time, kind:f.kind, amt:f.amt, fee:f.fee, to:f.to }); }
   }
-  flows.recent.sort((a,b)=>b.time-a.time);
+  flows.recent.sort((a,b)=>b.t-a.t);
   const win = currentWin();
   const bk = buildBuckets(win, activeLedger);
   const wLbl = winLabel();
@@ -419,14 +441,14 @@ function render() {
         <div class="ptitle">Capital flows · ${wLbl}</div>
         <div style="display:flex;gap:18px;margin-top:10px;flex-wrap:wrap">
           <div>
-            <div class="lbl" style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase">Deposited</div>
+            <div class="lbl" style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase">In</div>
             <div style="font-family:var(--mono);font-weight:700;font-size:18px;margin-top:4px">${usd(flows.dep)}</div>
-            <div class="meta" style="color:var(--dim);font-size:11px">${flows.depN} deposits</div>
+            <div class="meta" style="color:var(--dim);font-size:11px">${flows.depN} deposits &amp; transfers in</div>
           </div>
           <div>
-            <div class="lbl" style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase">Withdrawn</div>
+            <div class="lbl" style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase">Out</div>
             <div style="font-family:var(--mono);font-weight:700;font-size:18px;margin-top:4px">${usd(flows.wd)}</div>
-            <div class="meta" style="color:var(--dim);font-size:11px">${flows.wdN} withdrawals</div>
+            <div class="meta" style="color:var(--dim);font-size:11px">${flows.wdN} withdrawals &amp; transfers out</div>
           </div>
           <div>
             <div class="lbl" style="font-family:var(--mono);font-size:10px;letter-spacing:.14em;color:var(--dim);text-transform:uppercase">Net flow</div>
@@ -436,15 +458,15 @@ function render() {
         </div>
         ${flows.recent.length?`
         <div style="margin-top:12px;border-top:1px solid rgba(22,51,44,.5)">
-          ${flows.recent.slice(0,6).map(ev=>`
+          ${flows.recent.slice(0,6).map(r=>`
             <div class="posrow">
               <div>
-                <span style="font-size:13px">Withdrawal</span>
-                <div class="meta">${fdate(ev.time)}${ev.delta?.fee?` · fee ${usd(ev.delta.fee)}`:""}</div>
+                <span style="font-size:13px">${r.kind}</span>
+                <div class="meta">${fdate(r.t)}${r.fee?` · fee ${usd(r.fee)}`:""}${r.to?` · to ${esc(r.to.slice(0,6))}…${esc(r.to.slice(-4))}`:""}</div>
               </div>
-              <div class="neg" style="font-family:var(--mono);font-weight:600">−${usd(Math.abs(+ev.delta.usdc))}</div>
+              <div class="neg" style="font-family:var(--mono);font-weight:600">−${usd(r.amt)}</div>
             </div>`).join("")}
-          ${flows.wdN>6?`<div class="meta" style="padding-top:8px;color:var(--dim);font-size:11px">+ ${flows.wdN-6} earlier withdrawals</div>`:""}
+          ${flows.wdN>6?`<div class="meta" style="padding-top:8px;color:var(--dim);font-size:11px">+ ${flows.wdN-6} earlier outflows</div>`:""}
         </div>`:""}
       </section>
     </div>
