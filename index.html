@@ -116,7 +116,7 @@ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).
 const MINT = "#4FE3C1", EMBER = "#FF7A6B", GOLD = "#E5C97B", DIM = "#6E8B82", EDGE = "#16332C";
 
 let D = null;                 // loaded data (portfolio + clearinghouse)
-let period = "allTime", metric = "pnl";
+let period = "month", metric = "pnl";
 let mainChart = null, monthChart = null;
 let currentUser = null;
 let range = null;                     // custom {start,end} when period === "custom"
@@ -146,15 +146,20 @@ async function load(user) {
   try {
     const u = user.trim();
     if (!/^0x[a-fA-F0-9]{40}$/.test(u)) throw new Error("that doesn't look like an EVM address");
-    const [portfolio, clearing] = await Promise.all([
+    const safe = p => p.catch(() => null);
+    const [portfolio, clearing, spot, spotCtx, vaults, staking] = await Promise.all([
       info({ type:"portfolio", user:u }),
       info({ type:"clearinghouseState", user:u }),
+      safe(info({ type:"spotClearinghouseState", user:u })),
+      safe(info({ type:"spotMetaAndAssetCtxs" })),
+      safe(info({ type:"userVaultEquities", user:u })),
+      safe(info({ type:"delegatorSummary", user:u })),
     ]);
-    D = { pmap: Object.fromEntries(portfolio), clearing };
+    D = { pmap: Object.fromEntries(portfolio), clearing, spot, spotCtx, vaults, staking };
     currentUser = u;
     try { localStorage.setItem("hlpnl:addr", u); } catch (e) {}
     range = null; winCache.clear();
-    if (period === "custom") period = "allTime";
+    if (period === "custom") period = "month";
     winData = await getWinData();
     render();
   } catch (e) {
@@ -291,6 +296,33 @@ function buildBuckets(win, activeLedger) {
   return { arr, daily };
 }
 
+// USD mid prices for spot tokens, from spotMetaAndAssetCtxs (USDC-quoted pairs).
+function spotPrices() {
+  const res = { USDC: 1 };
+  const sc = D.spotCtx;
+  if (!Array.isArray(sc) || sc.length < 2) return res;
+  const [meta, ctxs] = sc;
+  const tok = i => meta.tokens?.[i]?.name;
+  (meta.universe || []).forEach((pair, i) => {
+    const [b, q] = pair.tokens || [];
+    const mid = +(ctxs?.[i]?.midPx || 0);
+    if (tok(q) === "USDC" && mid && !(tok(b) in res)) res[tok(b)] = mid;
+  });
+  return res;
+}
+
+// Total account value = perps margin + spot + vault equity + staked HYPE,
+// matching what the Hyperliquid UI shows as portfolio value.
+function accountBreakdown() {
+  const px = spotPrices();
+  const perp = +(D.clearing?.marginSummary?.accountValue || 0);
+  const spot = (D.spot?.balances || []).reduce((s, b) => s + (+b.total || 0) * (px[b.coin] ?? 0), 0);
+  const vault = (Array.isArray(D.vaults) ? D.vaults : []).reduce((s, v) => s + (+v.equity || 0), 0);
+  const st = D.staking, hype = px["HYPE"] || 0;
+  const staked = st ? ((+st.delegated || 0) + (+st.undelegated || 0) + (+st.totalPendingWithdrawal || 0)) * hype : 0;
+  return { perp, spot, vault, staked, total: perp + spot + vault + staked };
+}
+
 // Classify a ledger event as external capital flow. Bridge withdrawals are
 // type "withdraw"; direct sends to another Hyperliquid address (e.g. an
 // exchange's HL deposit address) are internalTransfer/spotTransfer/usdSend —
@@ -326,7 +358,8 @@ function byCoin(fills) {
 
 function render() {
   const custom = period === "custom" && range;
-  const eq = +(D.clearing?.marginSummary?.accountValue||0);
+  const acct = accountBreakdown();
+  const eq = acct.total;
   const vol = +(D.pmap.allTime?.vlm||0);
   const activeFills = winData?.fills || [];
   const activeFunding = winData?.funding || [];
@@ -350,7 +383,11 @@ function render() {
 
   document.getElementById("app").innerHTML = `
   <section class="strip">
-    <div class="stat"><div class="lbl">Account value</div><div class="val big">${usd(eq)}</div></div>
+    <div class="stat"><div class="lbl">Account value · spot</div><div class="val big">${usd(acct.spot)}</div>
+      <div class="meta" style="color:var(--dim);font-size:11px;font-family:var(--mono);margin-top:4px">${
+        [["Perps",acct.perp],["Vaults",acct.vault],["Staked",acct.staked],["Total",acct.total]]
+          .filter(([,v])=>v>=0.5).map(([l,v])=>`${l} ${usd(v)}`).join(" · ")
+      }</div></div>
     ${PERIODS.map(([k,l])=>{const v=periodPnl(k);return `
       <div class="stat"><div class="lbl">PnL ${l}</div><div class="val ${cls(v)}">${usd(v,true)}</div></div>`;}).join("")}
     ${custom?(()=>{const v=rangePnl();return `
