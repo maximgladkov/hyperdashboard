@@ -1,12 +1,13 @@
 "use client";
 
 import CapitalFlows from "@/components/CapitalFlows";
-import ChartPanel from "@/components/ChartPanel";
+import ChartPanel, { ChartControls } from "@/components/ChartPanel";
 import FlowsPanel from "@/components/FlowsPanel";
 import FundingPanel from "@/components/FundingPanel";
 import MarketTable from "@/components/MarketTable";
 import Positions from "@/components/Positions";
 import StatsStrip from "@/components/StatsStrip";
+import TrailWidget from "@/components/TrailWidget";
 import {
   PERIODS,
   accountBreakdown,
@@ -351,23 +352,19 @@ export default function Dashboard() {
         customValue={state.range ? rangePnl(D, state.range) : 0}
         vol={vol}
       />
-      <ChartPanel
-        metric={state.metric}
-        period={state.period}
-        wLbl={wLbl}
-        range={state.range}
-        pendingPeriod={state.pendingPeriod}
-        series={series}
-        onMetricChange={(m) => dispatch({ type: "SET_METRIC", metric: m })}
-        onPeriodChange={handlePeriodClick}
-        onRangeChange={handleRangeChange}
-      />
-      <FlowsPanel buckets={bk.arr} daily={bk.daily} wLbl={wLbl} />
-      <div className="flex flex-wrap items-start gap-4">
-        <div className="min-w-[340px] flex-[2]">
-          <MarketTable coins={coins} totR={totR} totF={totF} nTrades={nTrades} wLbl={wLbl} />
-        </div>
-        <div className="flex min-w-[260px] flex-1 flex-col gap-4">
+      <div className="mb-4 flex flex-col gap-4 lg:flex-row lg:flex-wrap lg:items-start">
+        <ChartControls
+          className="order-2 w-full lg:order-1"
+          metric={state.metric}
+          period={state.period}
+          range={state.range}
+          pendingPeriod={state.pendingPeriod}
+          onMetricChange={(m) => dispatch({ type: "SET_METRIC", metric: m })}
+          onPeriodChange={handlePeriodClick}
+          onRangeChange={handleRangeChange}
+        />
+        <div className="order-1 flex flex-col gap-4 lg:order-2 lg:w-[320px] lg:shrink-0">
+          <TrailWidget key={state.currentUser} address={state.currentUser!} />
           <Positions positions={positions} />
           <FundingPanel fundTot={fundTot} fundingCount={activeFunding.length} wLbl={wLbl} />
           <CapitalFlows
@@ -378,6 +375,11 @@ export default function Dashboard() {
             recent={flows.recent}
             wLbl={wLbl}
           />
+        </div>
+        <div className="order-3 flex min-w-0 flex-1 flex-col gap-4">
+          <ChartPanel metric={state.metric} period={state.period} wLbl={wLbl} series={series} />
+          <FlowsPanel buckets={bk.arr} daily={bk.daily} wLbl={wLbl} />
+          <MarketTable coins={coins} totR={totR} totF={totF} nTrades={nTrades} wLbl={wLbl} />
         </div>
       </div>
       <footer className="mt-2 max-w-2xl text-xs leading-relaxed text-muted">

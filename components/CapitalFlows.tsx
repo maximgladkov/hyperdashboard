@@ -1,6 +1,6 @@
-import { Separator } from "@heroui/react";
-import { NumberValue, Widget } from "@heroui-pro/react";
 import { cls, fdate, moneyFormatOptions, usd } from "@/lib/format";
+import { NumberValue, Widget } from "@heroui-pro/react";
+import { Separator } from "@heroui/react";
 
 type RecentFlow = { t: number; kind: string; amt: number; fee?: number; to?: string };
 

@@ -5,7 +5,7 @@ import type { Bucket } from "@/lib/types";
 export default function FlowsPanel({ buckets, daily, wLbl }: { buckets: Bucket[]; daily: boolean; wLbl: string }) {
   if (buckets.length <= 1) return null;
   return (
-    <Widget className="mb-4">
+    <Widget>
       <Widget.Header className="flex-wrap gap-3">
         <div className="flex flex-wrap items-baseline gap-1.5">
           <Widget.Title>Profit &amp; capital flows</Widget.Title>
