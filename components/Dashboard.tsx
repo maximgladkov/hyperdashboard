@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import CapitalFlows from "@/components/CapitalFlows";
 import ChartPanel from "@/components/ChartPanel";
 import FlowsPanel from "@/components/FlowsPanel";
@@ -8,7 +7,6 @@ import FundingPanel from "@/components/FundingPanel";
 import MarketTable from "@/components/MarketTable";
 import Positions from "@/components/Positions";
 import StatsStrip from "@/components/StatsStrip";
-import Toast from "@/components/Toast";
 import {
   PERIODS,
   accountBreakdown,
@@ -35,12 +33,12 @@ import type {
   VaultEquity,
   WinData,
 } from "@/lib/types";
+import { Alert, Button, SearchField, Spinner, Toast, toast } from "@heroui/react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 const DEFAULT_ADDR = "0x78e497a06B12d767371389EbD04baF7C8225a98b";
 const ADDR_STORAGE_KEY = "hlpnl:addr";
 const STALE_MS = 60 * 1000;
-
-type ToastState = { message: string; isError: boolean; hidden: boolean };
 
 type State = {
   D: AppData | null;
@@ -49,10 +47,7 @@ type State = {
   metric: Metric;
   range: Range | null;
   winData: WinData | null;
-  rsVal: string;
-  reVal: string;
   pendingPeriod: Period | null;
-  toast: ToastState;
   loading: boolean;
   error: string | null;
 };
@@ -64,10 +59,7 @@ const initialState: State = {
   metric: "pnl",
   range: null,
   winData: null,
-  rsVal: "",
-  reVal: "",
   pendingPeriod: null,
-  toast: { message: "", isError: false, hidden: true },
   loading: true,
   error: null,
 };
@@ -79,11 +71,7 @@ type Action =
   | { type: "SET_METRIC"; metric: Metric }
   | { type: "PERIOD_PENDING"; period: Period }
   | { type: "PERIOD_SUCCESS"; period: Period; range: Range | null; winData: WinData }
-  | { type: "PERIOD_ERROR" }
-  | { type: "SET_RS"; value: string }
-  | { type: "SET_RE"; value: string }
-  | { type: "SHOW_TOAST"; message: string; isError: boolean }
-  | { type: "HIDE_TOAST" };
+  | { type: "PERIOD_ERROR" };
 
 function reducer(state: State, action: Action): State {
   switch (action.type) {
@@ -110,14 +98,6 @@ function reducer(state: State, action: Action): State {
       return { ...state, period: action.period, range: action.range, winData: action.winData, pendingPeriod: null };
     case "PERIOD_ERROR":
       return { ...state, pendingPeriod: null };
-    case "SET_RS":
-      return { ...state, rsVal: action.value };
-    case "SET_RE":
-      return { ...state, reVal: action.value };
-    case "SHOW_TOAST":
-      return { ...state, toast: { message: action.message, isError: action.isError, hidden: false } };
-    case "HIDE_TOAST":
-      return { ...state, toast: { ...state.toast, hidden: true } };
     default:
       return state;
   }
@@ -152,19 +132,27 @@ export default function Dashboard() {
 
   const winCacheRef = useRef<Map<string, WinData>>(new Map());
   const lastRefreshRef = useRef(0);
-  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const toastKeyRef = useRef<string | null>(null);
   const stateRef = useRef(state);
 
   const hideToast = useCallback(() => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    dispatch({ type: "HIDE_TOAST" });
+    if (toastKeyRef.current) {
+      toast.close(toastKeyRef.current);
+      toastKeyRef.current = null;
+    }
   }, []);
 
-  const showToast = useCallback((message: string, isError = false, hideAfterMs = 0) => {
-    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
-    dispatch({ type: "SHOW_TOAST", message, isError });
-    if (hideAfterMs) toastTimerRef.current = setTimeout(hideToast, hideAfterMs);
-  }, [hideToast]);
+  const showToast = useCallback(
+    (message: string, isError = false) => {
+      hideToast();
+      toastKeyRef.current = toast(message, {
+        variant: isError ? "danger" : "default",
+        isLoading: !isError,
+        timeout: isError ? 5000 : 0,
+      });
+    },
+    [hideToast]
+  );
 
   const load = useCallback(
     async (rawUser: string) => {
@@ -197,13 +185,13 @@ export default function Dashboard() {
         dispatch({ type: "LOAD_SUCCESS", D: newD, currentUser: u, winData, period: newPeriod, range: null });
         try {
           localStorage.setItem(ADDR_STORAGE_KEY, u);
-        } catch {}
+        } catch { }
         lastRefreshRef.current = Date.now();
         hideToast();
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         dispatch({ type: "LOAD_ERROR", soft, message });
-        if (soft) showToast(`Refresh failed: ${message}`, true, 5000);
+        if (soft) showToast(`Refresh failed: ${message}`, true);
       }
     },
     [hideToast, showToast]
@@ -220,7 +208,7 @@ export default function Dashboard() {
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(ADDR_STORAGE_KEY);
-    } catch {}
+    } catch { }
     loadRef.current(saved || DEFAULT_ADDR);
   }, []);
 
@@ -255,7 +243,7 @@ export default function Dashboard() {
     } catch (err) {
       dispatch({ type: "PERIOD_ERROR" });
       const message = err instanceof Error ? err.message : String(err);
-      alert("Window lookup failed: " + message);
+      toast.danger("Window lookup failed", { description: message });
     }
   }, []);
 
@@ -278,22 +266,19 @@ export default function Dashboard() {
     setPeriod(p, state.range);
   };
 
-  const handleApplyRange = () => {
-    const s = Date.parse(state.rsVal);
-    const en = Date.parse(state.reVal);
-    if (isNaN(s) || isNaN(en) || s > en) {
-      alert("Pick a valid start and end date first.");
-      return;
-    }
-    setPeriod("custom", { start: s, end: en + 86399999 });
+  const handleRangeChange = (range: Range) => {
+    setPeriod("custom", range);
   };
 
   if (state.loading) {
     return (
       <>
         <Header addrInput={addrInput} onAddrChange={setAddrInput} onSubmit={handleSubmit} onRefresh={handleRefresh} refreshing={refreshing} />
-        <div className="loading">Querying Hyperliquid…</div>
-        <Toast {...state.toast} />
+        <div className="flex items-center justify-center gap-3 py-16 text-muted">
+          <Spinner size="sm" />
+          Querying Hyperliquid…
+        </div>
+        <Toast.Provider />
       </>
     );
   }
@@ -302,8 +287,14 @@ export default function Dashboard() {
     return (
       <>
         <Header addrInput={addrInput} onAddrChange={setAddrInput} onSubmit={handleSubmit} onRefresh={handleRefresh} refreshing={refreshing} />
-        <div className="error">Couldn&apos;t load this account: {state.error}.</div>
-        <Toast {...state.toast} />
+        <Alert className="max-w-2xl" status="danger">
+          <Alert.Indicator />
+          <Alert.Content>
+            <Alert.Title>Couldn&apos;t load this account</Alert.Title>
+            <Alert.Description>{state.error}.</Alert.Description>
+          </Alert.Content>
+        </Alert>
+        <Toast.Provider />
       </>
     );
   }
@@ -364,20 +355,19 @@ export default function Dashboard() {
         metric={state.metric}
         period={state.period}
         wLbl={wLbl}
-        rsVal={state.rsVal}
-        reVal={state.reVal}
+        range={state.range}
         pendingPeriod={state.pendingPeriod}
         series={series}
         onMetricChange={(m) => dispatch({ type: "SET_METRIC", metric: m })}
         onPeriodChange={handlePeriodClick}
-        onRsChange={(v) => dispatch({ type: "SET_RS", value: v })}
-        onReChange={(v) => dispatch({ type: "SET_RE", value: v })}
-        onApplyRange={handleApplyRange}
+        onRangeChange={handleRangeChange}
       />
       <FlowsPanel buckets={bk.arr} daily={bk.daily} wLbl={wLbl} />
-      <div className="cols">
-        <MarketTable coins={coins} totR={totR} totF={totF} nTrades={nTrades} wLbl={wLbl} />
-        <div className="side">
+      <div className="flex flex-wrap items-start gap-4">
+        <div className="min-w-[340px] flex-[2]">
+          <MarketTable coins={coins} totR={totR} totF={totF} nTrades={nTrades} wLbl={wLbl} />
+        </div>
+        <div className="flex min-w-[260px] flex-1 flex-col gap-4">
           <Positions positions={positions} />
           <FundingPanel fundTot={fundTot} fundingCount={activeFunding.length} wLbl={wLbl} />
           <CapitalFlows
@@ -390,14 +380,23 @@ export default function Dashboard() {
           />
         </div>
       </div>
-      <footer>
+      <footer className="mt-2 max-w-2xl text-xs leading-relaxed text-muted">
         Live from the public Hyperliquid info API. Every chart and panel is scoped to the selected window ({wLbl}).
         Fills, funding and transfers are fetched per window and cached; the API caps fill history at the 10,000 most
         recent, so very deep all-time market attribution can be partial. Deposits and withdrawals don&apos;t count as
         profit — PnL is trading only.
       </footer>
-      <Toast {...state.toast} />
+      <Toast.Provider />
     </>
+  );
+}
+
+function RefreshIcon() {
+  return (
+    <svg fill="none" height="16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="16">
+      <path d="M3 12a9 9 0 0 1 15.3-6.4L21 8M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15.3 6.4L3 16M3 21v-5h5" />
+    </svg>
   );
 }
 
@@ -415,31 +414,38 @@ function Header({
   refreshing: boolean;
 }) {
   return (
-    <header>
+    <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
-        <div className="eyebrow">HYPERLIQUID &middot; PERPS ACCOUNT</div>
-        <h1>Profit ledger</h1>
+        <div className="font-mono text-[11px] tracking-[.18em] text-accent">HYPERLIQUID &middot; PERPS ACCOUNT</div>
+        <h1 className="mt-1.5 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Profit ledger</h1>
       </div>
-      <form onSubmit={onSubmit}>
-        <input
-          spellCheck={false}
+      <form className="flex w-full flex-col gap-2 sm:max-w-[560px] sm:flex-1 sm:basis-[340px] sm:flex-row" onSubmit={onSubmit}>
+        <SearchField
+          className="flex-1"
           aria-label="Wallet address"
           value={addrInput}
-          onChange={(e) => onAddrChange(e.target.value)}
-        />
-        <button className="btn" type="submit">
-          Load
-        </button>
-        <button
-          className={`btn ghost ${refreshing ? "spin" : ""}`}
-          type="button"
-          aria-label="Refresh data"
-          title="Refresh"
-          disabled={refreshing}
-          onClick={onRefresh}
+          onChange={onAddrChange}
         >
-          &#x27F3;
-        </button>
+          <SearchField.Group className="font-mono text-sm">
+            <SearchField.Input spellCheck={false} placeholder="0x…" />
+            <SearchField.ClearButton />
+          </SearchField.Group>
+        </SearchField>
+        <div className="flex items-center gap-2">
+          <Button className="flex-1 sm:flex-initial" type="submit" variant="primary" size="sm">
+            Load
+          </Button>
+          <Button
+            isIconOnly
+            isPending={refreshing}
+            variant="ghost"
+            aria-label="Refresh data"
+            type="button"
+            onPress={onRefresh}
+          >
+            {({ isPending }) => (isPending ? <Spinner color="current" size="sm" /> : <RefreshIcon />)}
+          </Button>
+        </div>
       </form>
     </header>
   );

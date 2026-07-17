@@ -8,7 +8,21 @@ export const usd = (v: unknown, sign = false): string => {
   return `${n < 0 ? "\u2212" : sign && n > 0 ? "+" : ""}$${s}`;
 };
 
-export const cls = (v: unknown): "pos" | "neg" => (Number(v) >= 0 ? "pos" : "neg");
+export const cls = (v: unknown): "text-success" | "text-danger" =>
+  Number(v) >= 0 ? "text-success" : "text-danger";
 
 export const fdate = (ms: number): string =>
   new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "2-digit" });
+
+export const moneyFormatOptions = (
+  v: unknown,
+  sign = false
+): { style: "currency"; currency: string; maximumFractionDigits: number; signDisplay: "exceptZero" | "auto" } => {
+  const n = Number(v) || 0;
+  return {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2,
+    signDisplay: sign ? "exceptZero" : "auto",
+  };
+};

@@ -1,4 +1,5 @@
-import { cls, usd } from "@/lib/format";
+import { NumberValue, Widget } from "@heroui-pro/react";
+import { cls, moneyFormatOptions } from "@/lib/format";
 
 export default function FundingPanel({
   fundTot,
@@ -10,12 +11,15 @@ export default function FundingPanel({
   wLbl: string;
 }) {
   return (
-    <section className="panel">
-      <div className="ptitle">Funding &middot; {wLbl}</div>
-      <div className={`bignum ${cls(fundTot)}`}>{usd(fundTot, true)}</div>
-      <div className="meta" style={{ marginTop: 4, color: "var(--dim)", fontSize: 12 }}>
-        {fundingCount} funding payments &middot; net paid/received
-      </div>
-    </section>
+    <Widget>
+      <Widget.Header>
+        <Widget.Title>Funding</Widget.Title>
+        <Widget.Description>{wLbl}</Widget.Description>
+      </Widget.Header>
+      <Widget.Content>
+        <NumberValue className={`text-2xl font-bold ${cls(fundTot)}`} value={fundTot} {...moneyFormatOptions(fundTot, true)} />
+        <div className="mt-1 text-xs text-muted">{fundingCount} funding payments &middot; net paid/received</div>
+      </Widget.Content>
+    </Widget>
   );
 }

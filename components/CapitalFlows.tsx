@@ -1,4 +1,6 @@
-import { cls, fdate, usd } from "@/lib/format";
+import { Separator } from "@heroui/react";
+import { NumberValue, Widget } from "@heroui-pro/react";
+import { cls, fdate, moneyFormatOptions, usd } from "@/lib/format";
 
 type RecentFlow = { t: number; kind: string; amt: number; fee?: number; to?: string };
 
@@ -18,93 +20,58 @@ export default function CapitalFlows({
   wLbl: string;
 }) {
   return (
-    <section className="panel">
-      <div className="ptitle">Capital flows &middot; {wLbl}</div>
-      <div style={{ display: "flex", gap: 18, marginTop: 10, flexWrap: "wrap" }}>
-        <div>
-          <div
-            className="lbl"
-            style={{
-              fontFamily: "var(--mono)",
-              fontSize: 10,
-              letterSpacing: ".14em",
-              color: "var(--dim)",
-              textTransform: "uppercase",
-            }}
-          >
-            In
+    <Widget>
+      <Widget.Header>
+        <Widget.Title>Capital flows</Widget.Title>
+        <Widget.Description>{wLbl}</Widget.Description>
+      </Widget.Header>
+      <Widget.Content>
+        <div className="flex flex-wrap gap-5">
+          <div>
+            <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">In</div>
+            <NumberValue className="mt-1 font-mono text-lg font-bold" value={dep} {...moneyFormatOptions(dep)} />
+            <div className="text-xs text-muted">{depN} deposits &amp; transfers in</div>
           </div>
-          <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 18, marginTop: 4 }}>{usd(dep)}</div>
-          <div className="meta" style={{ color: "var(--dim)", fontSize: 11 }}>
-            {depN} deposits &amp; transfers in
+          <div>
+            <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Out</div>
+            <NumberValue className="mt-1 font-mono text-lg font-bold" value={wd} {...moneyFormatOptions(wd)} />
+            <div className="text-xs text-muted">{wdN} withdrawals &amp; transfers out</div>
           </div>
-        </div>
-        <div>
-          <div
-            className="lbl"
-            style={{
-              fontFamily: "var(--mono)",
-              fontSize: 10,
-              letterSpacing: ".14em",
-              color: "var(--dim)",
-              textTransform: "uppercase",
-            }}
-          >
-            Out
-          </div>
-          <div style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 18, marginTop: 4 }}>{usd(wd)}</div>
-          <div className="meta" style={{ color: "var(--dim)", fontSize: 11 }}>
-            {wdN} withdrawals &amp; transfers out
+          <div>
+            <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Net flow</div>
+            <NumberValue
+              className={`mt-1 font-mono text-lg font-bold ${cls(dep - wd)}`}
+              value={dep - wd}
+              {...moneyFormatOptions(dep - wd, true)}
+            />
+            <div className="text-xs text-muted">in &minus; out</div>
           </div>
         </div>
-        <div>
-          <div
-            className="lbl"
-            style={{
-              fontFamily: "var(--mono)",
-              fontSize: 10,
-              letterSpacing: ".14em",
-              color: "var(--dim)",
-              textTransform: "uppercase",
-            }}
-          >
-            Net flow
-          </div>
-          <div
-            className={cls(dep - wd)}
-            style={{ fontFamily: "var(--mono)", fontWeight: 700, fontSize: 18, marginTop: 4 }}
-          >
-            {usd(dep - wd, true)}
-          </div>
-          <div className="meta" style={{ color: "var(--dim)", fontSize: 11 }}>
-            in &minus; out
-          </div>
-        </div>
-      </div>
-      {recent.length > 0 && (
-        <div style={{ marginTop: 12, borderTop: "1px solid rgba(22,51,44,.5)" }}>
-          {recent.slice(0, 6).map((r, i) => (
-            <div className="posrow" key={i}>
-              <div>
-                <span style={{ fontSize: 13 }}>{r.kind}</span>
-                <div className="meta">
-                  {fdate(r.t)}
-                  {r.fee ? ` \u00b7 fee ${usd(r.fee)}` : ""}
-                  {r.to ? ` \u00b7 to ${r.to.slice(0, 6)}\u2026${r.to.slice(-4)}` : ""}
+        {recent.length > 0 && (
+          <>
+            <Separator className="mt-3" />
+            <div className="flex flex-col">
+              {recent.slice(0, 6).map((r, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between gap-3 border-b border-border py-2.5 last:border-b-0"
+                >
+                  <div>
+                    <span className="text-sm">{r.kind}</span>
+                    <div className="font-mono text-xs text-muted">
+                      {fdate(r.t)}
+                      {r.fee ? ` \u00b7 fee ${usd(r.fee)}` : ""}
+                      {r.to ? ` \u00b7 to ${r.to.slice(0, 6)}\u2026${r.to.slice(-4)}` : ""}
+                    </div>
+                  </div>
+                  <div className="font-mono font-semibold text-danger">&minus;{usd(r.amt)}</div>
                 </div>
-              </div>
-              <div className="neg" style={{ fontFamily: "var(--mono)", fontWeight: 600 }}>
-                &minus;{usd(r.amt)}
-              </div>
+              ))}
+              {wdN > 6 && <div className="pt-2 text-xs text-muted">+ {wdN - 6} earlier outflows</div>}
             </div>
-          ))}
-          {wdN > 6 && (
-            <div className="meta" style={{ paddingTop: 8, color: "var(--dim)", fontSize: 11 }}>
-              + {wdN - 6} earlier outflows
-            </div>
-          )}
-        </div>
-      )}
-    </section>
+          </>
+        )}
+      </Widget.Content>
+    </Widget>
   );
 }

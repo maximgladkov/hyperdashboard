@@ -1,6 +1,17 @@
-import { cls, usd } from "@/lib/format";
+import { cls, moneyFormatOptions } from "@/lib/format";
+import { KPI, KPIGroup } from "@heroui-pro/react";
+import { ScrollShadow } from "@heroui/react";
 
 type AccountBreakdown = { perp: number; spot: number; vault: number; staked: number; total: number };
+
+type StatItem = {
+  key: string;
+  title: React.ReactNode;
+  value: number;
+  options: ReturnType<typeof moneyFormatOptions>;
+  valueClassName?: string;
+  itemClassName?: string;
+};
 
 export default function StatsStrip({
   acct,
@@ -17,38 +28,48 @@ export default function StatsStrip({
   customValue: number;
   vol: number;
 }) {
-  const meta = ([
-    ["Perps", acct.perp],
-    ["Vaults", acct.vault],
-    ["Staked", acct.staked],
-    ["Total", acct.total],
-  ] as [string, number][]).filter(([, v]) => v >= 0.5);
+  const items: StatItem[] = [
+    { key: "account", title: "Account value", value: acct.spot, options: moneyFormatOptions(acct.spot) },
+    ...periodValues.map(([k, l, v]) => ({
+      key: k,
+      title: `PnL ${l}`,
+      value: v,
+      options: moneyFormatOptions(v, true),
+      valueClassName: cls(v),
+    })),
+    ...(custom
+      ? [
+        {
+          key: "custom",
+          title: `PnL ${customLabel}`,
+          value: customValue,
+          options: moneyFormatOptions(customValue, true),
+          valueClassName: cls(customValue),
+        },
+      ]
+      : []),
+    { key: "volume", title: "Lifetime volume", value: vol, options: moneyFormatOptions(vol), valueClassName: "text-muted" },
+  ];
+
+  const desktopGridCols = items.length >= 7 ? "sm:grid-cols-4 lg:grid-cols-7" : "sm:grid-cols-3 lg:grid-cols-6";
+
+  const renderKpi = (item: StatItem, className?: string) => (
+    <KPI key={item.key} className={[item.itemClassName, className].filter(Boolean).join(" ")}>
+      <KPI.Header>
+        <KPI.Title>{item.title}</KPI.Title>
+      </KPI.Header>
+      <KPI.Content>
+        <KPI.Value className={item.valueClassName} value={item.value} {...item.options} />
+      </KPI.Content>
+    </KPI>
+  );
 
   return (
-    <section className="strip">
-      <div className="stat">
-        <div className="lbl">Account value &middot; spot</div>
-        <div className="val big">{usd(acct.spot)}</div>
-        <div className="meta" style={{ color: "var(--dim)", fontSize: 11, fontFamily: "var(--mono)", marginTop: 4 }}>
-          {meta.map(([l, v]) => `${l} ${usd(v)}`).join(" \u00b7 ")}
-        </div>
-      </div>
-      {periodValues.map(([k, l, v]) => (
-        <div className="stat" key={k}>
-          <div className="lbl">PnL {l}</div>
-          <div className={`val ${cls(v)}`}>{usd(v, true)}</div>
-        </div>
-      ))}
-      {custom && (
-        <div className="stat" style={{ borderColor: "var(--mint)" }}>
-          <div className="lbl">PnL {customLabel}</div>
-          <div className={`val ${cls(customValue)}`}>{usd(customValue, true)}</div>
-        </div>
-      )}
-      <div className="stat">
-        <div className="lbl">Lifetime volume</div>
-        <div className="val mut">{usd(vol)}</div>
-      </div>
-    </section>
+    <>
+      <ScrollShadow className="mb-4 sm:hidden" hideScrollBar orientation="horizontal">
+        <KPIGroup className="w-max">{items.map((item) => renderKpi(item, "w-[150px] flex-none"))}</KPIGroup>
+      </ScrollShadow>
+      <KPIGroup className={`mb-4 hidden sm:grid ${desktopGridCols}`}>{items.map((item) => renderKpi(item))}</KPIGroup>
+    </>
   );
 }

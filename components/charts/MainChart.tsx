@@ -1,16 +1,15 @@
 "use client";
 
-import "@/lib/chartSetup";
-import type { ChartData, ChartOptions, ScriptableContext } from "chart.js";
-import { Line } from "react-chartjs-2";
+import { useId } from "react";
+import { AreaChart, ChartTooltip } from "@heroui-pro/react";
 import { fdate, usd } from "@/lib/format";
 import type { Metric } from "@/lib/types";
-
-const MINT = "#4FE3C1", EMBER = "#FF7A6B", GOLD = "#E5C97B", DIM = "#6E8B82", EDGE = "#16332C";
 
 type Point = { t: number; v: number };
 
 export default function MainChart({ series, metric }: { series: Point[]; metric: Metric }) {
+  const uid = useId();
+
   if (!series.length) return null;
 
   const vals = series.map((p) => p.v);
@@ -18,81 +17,67 @@ export default function MainChart({ series, metric }: { series: Point[]; metric:
   const min = Math.min(...vals);
   const off = max <= 0 ? 0 : min >= 0 ? 1 : max / (max - min);
   const clampOff = Math.min(Math.max(off, 0), 1);
+  const strokeId = `${uid}-stroke`;
+  const fillId = `${uid}-fill`;
 
-  const data: ChartData<"line"> = {
-    labels: series.map((p) => p.t),
-    datasets: [
-      {
-        data: vals,
-        borderWidth: 2,
-        pointRadius: 0,
-        tension: 0.2,
-        fill: metric === "pnl",
-        borderColor:
-          metric === "pnl"
-            ? (context: ScriptableContext<"line">) => {
-                const { ctx: cc, chartArea } = context.chart;
-                if (!chartArea) return MINT;
-                const g = cc.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
-                g.addColorStop(clampOff, MINT);
-                g.addColorStop(clampOff, EMBER);
-                return g;
-              }
-            : GOLD,
-        backgroundColor: (context: ScriptableContext<"line">) => {
-          const g = context.chart.ctx.createLinearGradient(0, 0, 0, 300);
-          g.addColorStop(0, "rgba(79,227,193,.35)");
-          g.addColorStop(clampOff, "rgba(79,227,193,.03)");
-          g.addColorStop(clampOff, "rgba(255,122,107,.03)");
-          g.addColorStop(1, "rgba(255,122,107,.35)");
-          return g;
-        },
-      },
-    ],
-  };
-
-  const options: ChartOptions<"line"> = {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: false,
-    interaction: { mode: "index", intersect: false },
-    plugins: {
-      legend: { display: false },
-      tooltip: {
-        backgroundColor: "#081613",
-        borderColor: EDGE,
-        borderWidth: 1,
-        titleFont: { family: "monospace" },
-        bodyFont: { family: "monospace" },
-        callbacks: {
-          title: (items) => new Date(+items[0].label).toLocaleString("en-GB", {
-            day: "numeric",
-            month: "short",
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-          label: (i) => (metric === "pnl" ? "PnL " : "Equity ") + usd(i.parsed.y, metric === "pnl"),
-        },
-      },
-    },
-    scales: {
-      x: {
-        grid: { display: false },
-        border: { color: EDGE },
-        ticks: {
-          color: DIM,
-          font: { family: "monospace", size: 11 },
-          maxTicksLimit: 8,
-          callback: (_v, i) => fdate(+series[i]?.t),
-        },
-      },
-      y: {
-        grid: { color: "rgba(22,51,44,.6)" },
-        border: { color: EDGE },
-        ticks: { color: DIM, font: { family: "monospace", size: 11 }, callback: (v) => usd(v) },
-      },
-    },
-  };
-
-  return <Line data={data} options={options} />;
+  return (
+    <AreaChart data={series} height={300} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+      <defs>
+        {metric === "pnl" ? (
+          <>
+            <linearGradient id={strokeId} x1="0" x2="0" y1="0" y2="1">
+              <stop offset={clampOff} stopColor="var(--color-success)" />
+              <stop offset={clampOff} stopColor="var(--color-danger)" />
+            </linearGradient>
+            <linearGradient id={fillId} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="var(--color-success)" stopOpacity={0.35} />
+              <stop offset={clampOff} stopColor="var(--color-success)" stopOpacity={0.03} />
+              <stop offset={clampOff} stopColor="var(--color-danger)" stopOpacity={0.03} />
+              <stop offset="100%" stopColor="var(--color-danger)" stopOpacity={0.35} />
+            </linearGradient>
+          </>
+        ) : (
+          <linearGradient id={fillId} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.35} />
+            <stop offset="100%" stopColor="var(--accent)" stopOpacity={0.03} />
+          </linearGradient>
+        )}
+      </defs>
+      <AreaChart.Grid vertical={false} />
+      <AreaChart.XAxis dataKey="t" tickFormatter={(v: number) => fdate(v)} tickMargin={8} />
+      <AreaChart.YAxis tickFormatter={(v: number) => usd(v)} width={72} />
+      <AreaChart.Area
+        dataKey="v"
+        dot={false}
+        fill={`url(#${fillId})`}
+        stroke={metric === "pnl" ? `url(#${strokeId})` : "var(--accent)"}
+        strokeWidth={2}
+        type="monotone"
+      />
+      <AreaChart.Tooltip
+        content={({ active, label, payload }) => {
+          if (!active || !payload?.length) return null;
+          const v = Number(payload[0]?.value ?? 0);
+          const color = metric === "pnl" ? (v >= 0 ? "var(--color-success)" : "var(--color-danger)") : "var(--accent)";
+          return (
+            <ChartTooltip>
+              <ChartTooltip.Header>
+                {new Date(Number(label)).toLocaleString("en-GB", {
+                  day: "numeric",
+                  month: "short",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </ChartTooltip.Header>
+              <ChartTooltip.Item>
+                <ChartTooltip.Indicator color={color} />
+                <ChartTooltip.Label>{metric === "pnl" ? "PnL" : "Equity"}</ChartTooltip.Label>
+                <ChartTooltip.Value>{usd(v, metric === "pnl")}</ChartTooltip.Value>
+              </ChartTooltip.Item>
+            </ChartTooltip>
+          );
+        }}
+      />
+    </AreaChart>
+  );
 }
