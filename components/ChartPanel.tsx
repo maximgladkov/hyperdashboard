@@ -47,7 +47,7 @@ export function ChartControls({
     period === "custom" && range ? { start: msToDateValue(range.start), end: msToDateValue(range.end) } : null;
 
   return (
-    <div className={`flex flex-wrap items-center justify-center gap-3 lg:justify-end${className ? ` ${className}` : ""}`}>
+    <div className={`flex flex-wrap items-center justify-center gap-3 lg:justify-end ${className ? ` ${className}` : ""}`}>
       <div className="flex flex-wrap items-center gap-2">
         <Segment
           selectedKey={metric}
