@@ -189,14 +189,13 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
             description: `${formatSize(order.filledSz)} ${coin} @ ${usd(order.avgPx)}`,
           });
         }
-        handleReset();
       } catch (err) {
         toast.danger("Order failed", { description: (err as Error).message });
       } finally {
         setPending(null);
       }
     },
-    [address, pending, following, value, size, coin, handleReset]
+    [address, pending, following, value, size, coin]
   );
 
   const reduceOrder = useMemo(() => orders.find((o) => o.reduceOnly) ?? null, [orders]);
@@ -223,7 +222,6 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
           description: `${formatSize(order.filledSz)} ${coin} @ ${usd(order.avgPx)}`,
         });
       }
-      handleReset();
     } catch (err) {
       toast.danger(moving ? "Reduce-only move failed" : "Reduce-only order failed", {
         description: (err as Error).message,
@@ -231,7 +229,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
     } finally {
       setReducing(false);
     }
-  }, [address, reducing, positionSide, positionSize, following, value, coin, reduceOrder, handleReset]);
+  }, [address, reducing, positionSide, positionSize, following, value, coin, reduceOrder]);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
