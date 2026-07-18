@@ -27,10 +27,6 @@ const INERTIA_FRICTION = 0.0035;
 const INERTIA_STOP_FACTOR = 0.05;
 const RULER_WIDTH_PX = 64;
 
-function priceDecimals(price: number): number {
-  return Math.abs(price) >= 1000 ? 0 : 2;
-}
-
 function formatTick(v: number, decimals: number): string {
   return v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
@@ -203,7 +199,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
           inertiaRef.current = requestAnimationFrame(frame);
         } else {
           inertiaRef.current = null;
-          setHeldValue((v) => (v == null ? v : Math.round(v / priceStep) * priceStep));
+          setHeldValue((v) => (v == null ? v : Math.round(v)));
         }
       };
       inertiaRef.current = requestAnimationFrame(frame);
@@ -455,7 +451,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
               <NumberFlowInput
                 key={`${coin}-${inputEpoch}`}
                 className="text-3xl font-bold text-foreground tabular-nums outline-none"
-                decimalScale={priceDecimals(effectiveValue)}
+                decimalScale={0}
                 format={formatCurrencyInput}
                 isAllowed={(v) => v == null || v >= 0}
                 placeholder={usd(effectiveValue)}
