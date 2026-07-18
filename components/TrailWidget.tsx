@@ -45,47 +45,71 @@ export default function TrailWidget({ address }: { address: string }) {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [livePrice, setLivePrice] = useState<number | null>(null);
   const [priceStep] = usePriceStep();
-
   const [localType, setLocalType] = useState<TrailType>("pct");
   const [localPct, setLocalPct] = useState(2);
   const [localAbs, setLocalAbs] = useState(100);
   const [localEnabled, setLocalEnabled] = useState(true);
   const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingWriteRef = useRef(false);
+  const syncOnNextPollRef = useRef(true);
+  const mountedRef = useRef(true);
+
+  const applyTrailToLocal = useCallback(
+    (trail: TenantState["trail"]) => {
+      setLocalType(trail.type);
+      setLocalEnabled(trail.enabled);
+      if (trail.type === "pct") setLocalPct(+(trail.value * 100).toFixed(2));
+      else setLocalAbs(roundToStep(trail.value, priceStep));
+    },
+    [priceStep]
+  );
+
+  const poll = useCallback(async () => {
+    try {
+      const res = await fetchTrailState(address);
+      if (!mountedRef.current) return;
+      if ("error" in res) {
+        setFetchError(res.error);
+        return;
+      }
+      setFetchError(null);
+      setManaged(res.managed);
+      if (res.managed) {
+        setState(res.state);
+        const trail = res.state?.trail;
+        if (trail && syncOnNextPollRef.current) {
+          syncOnNextPollRef.current = false;
+          applyTrailToLocal(trail);
+        }
+      }
+    } catch (err) {
+      if (mountedRef.current) setFetchError(err instanceof Error ? err.message : String(err));
+    }
+  }, [address, applyTrailToLocal]);
 
   useEffect(() => {
-    let cancelled = false;
-    const poll = async () => {
-      try {
-        const res = await fetchTrailState(address);
-        if (cancelled) return;
-        if ("error" in res) {
-          setFetchError(res.error);
-          return;
-        }
-        setFetchError(null);
-        setManaged(res.managed);
-        if (res.managed) {
-          setState(res.state);
-          const trail = res.state?.trail;
-          if (trail && !pendingWriteRef.current) {
-            setLocalType(trail.type);
-            setLocalEnabled(trail.enabled);
-            if (trail.type === "pct") setLocalPct(+(trail.value * 100).toFixed(2));
-            else setLocalAbs(roundToStep(trail.value, priceStep));
-          }
-        }
-      } catch (err) {
-        if (!cancelled) setFetchError(err instanceof Error ? err.message : String(err));
-      }
-    };
+    mountedRef.current = true;
+    syncOnNextPollRef.current = true;
     poll();
     const id = setInterval(poll, POLL_MS);
     return () => {
-      cancelled = true;
+      mountedRef.current = false;
       clearInterval(id);
     };
-  }, [address, priceStep]);
+  }, [poll]);
+
+  useEffect(() => {
+    const resync = () => {
+      if (document.visibilityState !== "visible") return;
+      syncOnNextPollRef.current = true;
+      poll();
+    };
+    window.addEventListener("focus", resync);
+    document.addEventListener("visibilitychange", resync);
+    return () => {
+      window.removeEventListener("focus", resync);
+      document.removeEventListener("visibilitychange", resync);
+    };
+  }, [poll]);
 
   useEffect(() => {
     if (!state?.coin) return;
@@ -109,15 +133,7 @@ export default function TrailWidget({ address }: { address: string }) {
   const scheduleWrite = useCallback(
     (effectiveType: TrailType, fields: { type?: TrailType; value?: number; enabled?: boolean }, immediate = false) => {
       if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
-      pendingWriteRef.current = true;
-      const run = async () => {
-        writeTimerRef.current = null;
-        try {
-          await writeTrailConfig(address, effectiveType, fields);
-        } finally {
-          pendingWriteRef.current = false;
-        }
-      };
+      const run = () => writeTrailConfig(address, effectiveType, fields);
       if (immediate) run();
       else writeTimerRef.current = setTimeout(run, WRITE_DEBOUNCE_MS);
     },
