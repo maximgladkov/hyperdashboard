@@ -1,7 +1,7 @@
 const WS_URL = "wss://api.hyperliquid.xyz/ws";
-const PING_MS = 30 * 1000;
-const STALE_MS = 20 * 1000;
-const WATCHDOG_MS = 5 * 1000;
+const PING_MS = 3 * 1000;
+const STALE_MS = 5 * 1000;
+const WATCHDOG_MS = 2 * 1000;
 const MAX_BACKOFF_MS = 30 * 1000;
 
 type Subscription = Record<string, unknown>;
