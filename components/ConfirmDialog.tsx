@@ -29,7 +29,7 @@ type ConfirmOptions = {
 export function useConfirm() {
   const state = useOverlayState();
   const [options, setOptions] = useState<ConfirmOptions | null>(null);
-  const actionRef = useRef<() => void>(() => {});
+  const actionRef = useRef<() => void>(() => { });
 
   const confirm = useCallback(
     (action: () => void, opts: ConfirmOptions) => {
@@ -58,7 +58,7 @@ export function useConfirm() {
 
   const dialog = (
     <Modal.Backdrop isOpen={state.isOpen} onOpenChange={state.setOpen}>
-      <Modal.Container size="xs">
+      <Modal.Container placement="center">
         <Modal.Dialog>
           <Modal.CloseTrigger />
           <Modal.Header>
@@ -73,7 +73,7 @@ export function useConfirm() {
               <PressableFeedback.HoldConfirm className={holdClassName} duration={HOLD_MS} onComplete={handleConfirm}>
                 {confirmLabel}
               </PressableFeedback.HoldConfirm>
-              {confirmLabel}
+              Hold to {confirmLabel}
             </Button>
           </Modal.Footer>
         </Modal.Dialog>
