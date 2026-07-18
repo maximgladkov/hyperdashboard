@@ -1,0 +1,564 @@
+"use client";
+
+import { moneyFormatOptions, usd } from "@/lib/format";
+import { hlSocket } from "@/lib/hlws";
+import { fetchOpenOrders } from "@/lib/hyperliquid";
+import { orderLabel, orderPrice } from "@/lib/orders";
+import { placeOrder } from "@/lib/trade";
+import { usePositionStep, usePriceStep } from "@/lib/tradeSteps";
+import type { TenantState } from "@/lib/trail";
+import type { OpenOrder } from "@/lib/types";
+import { NumberFlowInput } from "@daformat/react-number-flow-input";
+import { NumberStepper, Widget } from "@heroui-pro/react";
+import type { ButtonProps } from "@heroui/react";
+import { Button, ButtonGroup, toast } from "@heroui/react";
+import NumberFlow from "@number-flow/react";
+import type { CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+const THROTTLE_MS = 500;
+const POSITION_POLL_MS = 3000;
+const ORDERS_POLL_MS = 5000;
+const IDLE_RESET_MS = 15000;
+const PIXELS_PER_STEP = 32;
+const RULER_TICKS = 28;
+const MAJOR_EVERY = 2;
+const INERTIA_FRICTION = 0.0035;
+const INERTIA_STOP_FACTOR = 0.05;
+const RULER_WIDTH_PX = 64;
+
+function priceDecimals(price: number): number {
+  return Math.abs(price) >= 1000 ? 0 : 2;
+}
+
+function formatTick(v: number, decimals: number): string {
+  return v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+}
+
+function formatSize(n: number): string {
+  return n.toFixed(4).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+}
+
+function decimalsForStep(step: number): number {
+  if (!step || step >= 1) return 0;
+  return Math.max(0, Math.round(Math.log10(1 / step)));
+}
+
+function formatCurrencyInput(raw: string): string {
+  if (raw === "" || raw === ".") return raw;
+  const [intPart, decPart] = raw.split(".");
+  const grouped = (intPart || "0").replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return `$${decPart !== undefined ? `${grouped}.${decPart}` : grouped}`;
+}
+
+const SUCCESS_BUTTON_STYLE = {
+  "--button-bg": "var(--success)",
+  "--button-bg-hover": "var(--success-hover)",
+  "--button-bg-pressed": "var(--success-hover)",
+  "--button-fg": "var(--success-foreground)",
+  borderColor: "var(--success)",
+} as CSSProperties;
+
+type ActionButtonProps = Omit<ButtonProps, "variant"> & { variant?: ButtonProps["variant"] | "success" };
+
+function ActionButton({ variant, style, ...props }: ActionButtonProps) {
+  const isSuccess = variant === "success";
+  return (
+    <Button
+      style={isSuccess ? { ...SUCCESS_BUTTON_STYLE, ...style } : style}
+      variant={isSuccess ? "primary" : variant}
+      {...props}
+    />
+  );
+}
+
+type TrailStateResponse = { managed: false } | { managed: true; state: TenantState | null } | { error: string };
+
+async function fetchTrailState(address: string): Promise<TrailStateResponse> {
+  const r = await fetch(`/api/trail/state?address=${address}`, { cache: "no-store" });
+  return r.json();
+}
+
+type DragState = { startY: number; startValue: number; lastY: number; lastT: number; velocity: number };
+
+export default function TradeWheel({ coin, initialPrice, address }: { coin: string; initialPrice?: number; address?: string }) {
+  const [mark, setMark] = useState<number | null>(initialPrice ?? null);
+  const [heldValue, setHeldValue] = useState<number | null>(initialPrice ?? null);
+  const [following, setFollowing] = useState(true);
+  const [isDragging, setIsDragging] = useState(false);
+  const [inputEpoch, setInputEpoch] = useState(0);
+  const [entryPx, setEntryPx] = useState<number | null>(null);
+  const [stopPx, setStopPx] = useState<number | null>(null);
+  const [positionSize, setPositionSize] = useState<number | null>(null);
+  const [orders, setOrders] = useState<OpenOrder[]>([]);
+  const [size, setSize] = useState(0.01);
+  const [pending, setPending] = useState<"buy" | "sell" | null>(null);
+  const [sizeStep] = usePositionStep();
+  const [priceStep] = usePriceStep();
+
+  const value = following ? mark : heldValue;
+
+  const dragRef = useRef<DragState | null>(null);
+  const inertiaRef = useRef<number | null>(null);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let latest: number | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const flush = () => {
+      timer = null;
+      if (latest != null) setMark(latest);
+    };
+    const off = hlSocket.subscribe({ type: "allMids" }, (data) => {
+      const mids = (data as { mids?: Record<string, string> })?.mids;
+      const raw = mids?.[coin];
+      if (raw == null) return;
+      const n = +raw;
+      if (!n) return;
+      latest = n;
+      if (!timer) timer = setTimeout(flush, THROTTLE_MS);
+    });
+    return () => {
+      off();
+      if (timer) clearTimeout(timer);
+    };
+  }, [coin]);
+
+  useEffect(() => {
+    if (!address) {
+      setEntryPx(null);
+      setStopPx(null);
+      setPositionSize(null);
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetchTrailState(address);
+        if (cancelled) return;
+        const state = "managed" in res && res.managed ? res.state : null;
+        if (!state || state.coin !== coin) {
+          setEntryPx(null);
+          setStopPx(null);
+          setPositionSize(null);
+          return;
+        }
+        setEntryPx(state.position?.entryPx ?? null);
+        setStopPx(state.stop?.triggerPx ?? null);
+        setPositionSize(state.position?.size ?? null);
+      } catch {
+        setEntryPx(null);
+        setStopPx(null);
+        setPositionSize(null);
+      }
+    };
+    poll();
+    const id = setInterval(poll, POSITION_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [address, coin]);
+
+  useEffect(() => {
+    if (!address) {
+      setOrders([]);
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      const list = await fetchOpenOrders(address);
+      if (cancelled) return;
+      setOrders(list.filter((o) => o.coin === coin && !o.isTrigger));
+    };
+    poll();
+    const id = setInterval(poll, ORDERS_POLL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [address, coin]);
+
+  const cancelInertia = useCallback(() => {
+    if (inertiaRef.current != null) {
+      cancelAnimationFrame(inertiaRef.current);
+      inertiaRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => cancelInertia(), [cancelInertia]);
+
+  const step = priceStep;
+
+  const runInertia = useCallback(
+    (initialVelocity: number) => {
+      let velocity = initialVelocity;
+      let last = performance.now();
+      const frame = (now: number) => {
+        const dt = now - last;
+        last = now;
+        velocity *= Math.exp(-INERTIA_FRICTION * dt);
+        setHeldValue((v) => (v ?? 0) + velocity * dt);
+        if (Math.abs(velocity) * 1000 > priceStep * INERTIA_STOP_FACTOR) {
+          inertiaRef.current = requestAnimationFrame(frame);
+        } else {
+          inertiaRef.current = null;
+          setHeldValue((v) => (v == null ? v : Math.round(v / priceStep) * priceStep));
+        }
+      };
+      inertiaRef.current = requestAnimationFrame(frame);
+    },
+    [priceStep]
+  );
+
+  const clearIdleTimer = useCallback(() => {
+    if (idleTimerRef.current != null) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+  }, []);
+
+  const handleReset = useCallback(() => {
+    cancelInertia();
+    clearIdleTimer();
+    setFollowing(true);
+    setInputEpoch((n) => n + 1);
+    if (mark != null) setHeldValue(mark);
+  }, [mark, cancelInertia, clearIdleTimer]);
+
+  const scheduleIdleReset = useCallback(() => {
+    clearIdleTimer();
+    idleTimerRef.current = setTimeout(() => {
+      idleTimerRef.current = null;
+      handleReset();
+    }, IDLE_RESET_MS);
+  }, [clearIdleTimer, handleReset]);
+
+  const submitOrder = useCallback(
+    async (side: "buy" | "sell") => {
+      if (!address || pending) return;
+      const limitPrice = following ? null : value;
+      const label = side === "buy" ? "Long" : "Short";
+      setPending(side);
+      try {
+        const { order } = await placeOrder(address, { side, size, price: limitPrice });
+        if (order.status === "resting") {
+          toast.success(`${label} limit resting`, {
+            description: `${formatSize(size)} ${coin} @ ${usd(limitPrice)}`,
+          });
+        } else {
+          toast.success(`${label} filled`, {
+            description: `${formatSize(order.filledSz)} ${coin} @ ${usd(order.avgPx)}`,
+          });
+        }
+        handleReset();
+      } catch (err) {
+        toast.danger("Order failed", { description: (err as Error).message });
+      } finally {
+        setPending(null);
+      }
+    },
+    [address, pending, following, value, size, coin, handleReset]
+  );
+
+  useEffect(() => () => clearIdleTimer(), [clearIdleTimer]);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      cancelInertia();
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setFollowing(false);
+      setIsDragging(true);
+      setInputEpoch((n) => n + 1);
+      scheduleIdleReset();
+      dragRef.current = {
+        startY: e.clientY,
+        startValue: value ?? mark ?? 0,
+        lastY: e.clientY,
+        lastT: e.timeStamp,
+        velocity: 0,
+      };
+    },
+    [value, mark, cancelInertia, scheduleIdleReset]
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const dyTotal = e.clientY - drag.startY;
+      setHeldValue(drag.startValue + (dyTotal / PIXELS_PER_STEP) * step);
+      const dt = e.timeStamp - drag.lastT;
+      if (dt > 0) {
+        const dy = e.clientY - drag.lastY;
+        drag.velocity = ((dy / PIXELS_PER_STEP) * step) / dt;
+      }
+      drag.lastY = e.clientY;
+      drag.lastT = e.timeStamp;
+      scheduleIdleReset();
+    },
+    [step, scheduleIdleReset]
+  );
+
+  const handlePointerUp = useCallback(() => {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    setIsDragging(false);
+    if (!drag) return;
+    scheduleIdleReset();
+    runInertia(drag.velocity);
+  }, [runInertia, scheduleIdleReset]);
+
+  const centerIndex = value != null ? Math.round(value / step) : 0;
+  const ticks = useMemo(() => {
+    const arr: { idx: number; tickValue: number; major: boolean }[] = [];
+    for (let k = -RULER_TICKS; k <= RULER_TICKS; k++) {
+      const idx = centerIndex + k;
+      arr.push({ idx, tickValue: idx * step, major: idx % MAJOR_EVERY === 0 });
+    }
+    return arr;
+  }, [centerIndex, step]);
+
+  const effectiveValue = value ?? mark ?? 0;
+  const isLong = mark == null || effectiveValue <= mark;
+  const markOffset = mark != null && value != null ? ((value - mark) / step) * PIXELS_PER_STEP : 0;
+  const entryOffset = entryPx != null && value != null ? ((value - entryPx) / step) * PIXELS_PER_STEP : null;
+  const stopOffset = stopPx != null && value != null ? ((value - stopPx) / step) * PIXELS_PER_STEP : null;
+  const sizeDecimals = decimalsForStep(sizeStep);
+
+  const orderLines = useMemo(() => {
+    if (value == null) return [];
+    return orders
+      .map((o) => {
+        const px = orderPrice(o);
+        if (!px) return null;
+        const offset = ((value - px) / step) * PIXELS_PER_STEP;
+        if (Math.abs(offset) > 260) return null;
+        return { order: o, offset, px };
+      })
+      .filter((x): x is { order: OpenOrder; offset: number; px: number } => x != null);
+  }, [orders, value, step]);
+
+  return (
+    <Widget>
+      <Widget.Header>
+        <Widget.Title>Trade &middot; {coin}</Widget.Title>
+        <Widget.Description className="flex items-center gap-1 font-mono">
+          Mark <NumberFlow format={moneyFormatOptions(mark ?? 0)} value={mark ?? 0} />
+        </Widget.Description>
+      </Widget.Header>
+      <Widget.Content className="p-0">
+        <div
+          className={`relative aspect-square w-full touch-none select-none overflow-hidden bg-surface ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+          onPointerCancel={handlePointerUp}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        >
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 bg-white/30" />
+
+          {!following && mark != null && value != null && (
+            <div
+              className="pointer-events-none absolute inset-x-0 top-1/2 z-[5] border-t border-dashed border-accent/60"
+              style={{
+                transform: `translateY(${markOffset}px)`,
+                transition: isDragging ? "none" : "transform 300ms ease-out",
+              }}
+            >
+              <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-accent px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-accent-foreground">
+                MARK <span className="tabular-nums">{usd(mark)}</span>
+              </span>
+            </div>
+          )}
+
+          {entryOffset != null && (
+            <div
+              className="pointer-events-none absolute inset-x-0 top-1/2 z-[4] border-t border-dashed border-sky-400/60"
+              style={{
+                transform: `translateY(${entryOffset}px)`,
+                transition: isDragging ? "none" : "transform 300ms ease-out",
+              }}
+            >
+              <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-sky-400 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black">
+                ENTRY
+                {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
+                @ <span className="tabular-nums">{usd(entryPx)}</span>
+              </span>
+            </div>
+          )}
+
+          {stopOffset != null && (
+            <div
+              className="pointer-events-none absolute inset-x-0 top-1/2 z-[4] border-t border-dashed border-danger/70"
+              style={{
+                transform: `translateY(${stopOffset}px)`,
+                transition: isDragging ? "none" : "transform 300ms ease-out",
+              }}
+            >
+              <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-danger px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-danger-foreground">
+                STOP
+                {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
+                @ <span className="tabular-nums">{usd(stopPx)}</span>
+              </span>
+            </div>
+          )}
+
+          {orderLines.map(({ order, offset, px }) => {
+            const isBuy = order.side === "B";
+            return (
+              <div
+                key={order.oid}
+                className={`pointer-events-none absolute inset-x-0 top-1/2 z-[3] border-t border-dashed ${isBuy ? "border-cyan-400/60" : "border-orange-400/60"}`}
+                style={{
+                  transform: `translateY(${offset}px)`,
+                  transition: isDragging ? "none" : "transform 300ms ease-out",
+                }}
+              >
+                <span
+                  className={`absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black ${isBuy ? "bg-cyan-400" : "bg-orange-400"}`}
+                >
+                  {isBuy ? "BUY" : "SELL"} {orderLabel(order)}
+                  <span className="tabular-nums">{formatSize(+order.sz)}</span>
+                  @ <span className="tabular-nums">{usd(px)}</span>
+                </span>
+              </div>
+            );
+          })}
+
+          <div
+            className="pointer-events-none absolute inset-y-0 right-0 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_12%,black_88%,transparent)]"
+            style={{ width: RULER_WIDTH_PX }}
+          >
+            {ticks.map(({ idx, tickValue, major }) => {
+              const offset = value == null ? 0 : ((value - tickValue) / step) * PIXELS_PER_STEP;
+              if (Math.abs(offset) > 260) return null;
+              return (
+                <div
+                  key={idx}
+                  className="absolute right-0 top-1/2 flex items-center justify-end gap-1.5"
+                  style={{
+                    transform: `translateY(calc(-50% + ${offset}px))`,
+                    transition: isDragging ? "none" : "transform 300ms ease-out",
+                  }}
+                >
+                  {major && (
+                    <span className="font-mono text-[10px] tabular-nums text-muted">{formatTick(tickValue, 0)}</span>
+                  )}
+                  <span className={major ? "h-[2px] w-4 bg-foreground/50" : "h-px w-2.5 bg-foreground/25"} />
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="absolute top-1/2 left-4 z-10 -translate-y-1/2" onPointerDown={(e) => e.stopPropagation()}>
+            <div className="rounded-lg bg-black/50 px-3 py-2 flex items-center justify-center shadow-field">
+              <NumberFlowInput
+                key={`${coin}-${inputEpoch}`}
+                className="text-3xl font-bold text-foreground tabular-nums outline-none"
+                decimalScale={priceDecimals(effectiveValue)}
+                format={formatCurrencyInput}
+                isAllowed={(v) => v == null || v >= 0}
+                placeholder={usd(effectiveValue)}
+                onFocus={() => {
+                  setHeldValue(value);
+                  setFollowing(false);
+                  scheduleIdleReset();
+                }}
+                onChange={(v) => {
+                  if (v == null) return;
+                  setFollowing(false);
+                  setHeldValue(v);
+                  scheduleIdleReset();
+                }}
+                onBlur={() => {
+                  setInputEpoch((n) => n + 1);
+                  scheduleIdleReset();
+                }}
+              />
+            </div>
+          </div>
+
+          <div className="absolute inset-x-3 top-3 z-10 flex justify-center" onPointerDown={(e) => e.stopPropagation()}>
+            <NumberStepper aria-label="Position size" minValue={sizeStep} step={sizeStep} value={size} onChange={setSize}>
+              <NumberStepper.Group>
+                <NumberStepper.DecrementButton />
+                <NumberStepper.Value className="mx-3">
+                  {({ value }) => (
+                    <span className="font-mono text-xs tabular-nums">
+                      {new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value)} {coin}
+                    </span>
+                  )}
+                </NumberStepper.Value>
+                <NumberStepper.IncrementButton />
+              </NumberStepper.Group>
+            </NumberStepper>
+          </div>
+
+          <Button
+            aria-label={following ? "Following mark price" : "Reset to mark price"}
+            className="absolute top-3 left-3 z-10 font-mono text-[11px]"
+            isDisabled={following}
+            size="sm"
+            variant="ghost"
+            onPointerDown={(e) => e.stopPropagation()}
+            onPress={handleReset}
+          >
+            {following ? (
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+              </span>
+            ) : (
+              <ResetIcon />
+            )}
+            {following ? "Live" : "Reset"}
+          </Button>
+
+          <div className="absolute inset-x-3 bottom-3 z-10 flex flex-col gap-2" onPointerDown={(e) => e.stopPropagation()}>
+            {following ? (
+              <ButtonGroup fullWidth size="lg">
+                <ActionButton
+                  variant="success"
+                  isDisabled={!address || (pending != null && pending !== "buy")}
+                  isPending={pending === "buy"}
+                  onPress={() => submitOrder("buy")}
+                >
+                  Long
+                </ActionButton>
+                <ActionButton
+                  variant="danger"
+                  isDisabled={!address || (pending != null && pending !== "sell")}
+                  isPending={pending === "sell"}
+                  onPress={() => submitOrder("sell")}
+                >
+                  <ButtonGroup.Separator />
+                  Short
+                </ActionButton>
+              </ButtonGroup>
+            ) : (
+              <ActionButton
+                fullWidth
+                size="lg"
+                variant={isLong ? "success" : "danger"}
+                isDisabled={!address || pending != null}
+                isPending={pending === (isLong ? "buy" : "sell")}
+                onPress={() => submitOrder(isLong ? "buy" : "sell")}
+              >
+                {isLong ? "Long" : "Short"} @ {usd(value)}
+              </ActionButton>
+            )}
+          </div>
+        </div>
+      </Widget.Content>
+    </Widget>
+  );
+}
+
+function ResetIcon() {
+  return (
+    <svg fill="none" height="12" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="12">
+      <path d="M3 12a9 9 0 0 1 15.3-6.4L21 8M21 3v5h-5" />
+      <path d="M21 12a9 9 0 0 1-15.3 6.4L3 16M3 21v-5h5" />
+    </svg>
+  );
+}

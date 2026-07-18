@@ -6,8 +6,10 @@ import FlowsPanel from "@/components/FlowsPanel";
 import FundingPanel from "@/components/FundingPanel";
 import MarketTable from "@/components/MarketTable";
 import NotificationPrompt from "@/components/NotificationPrompt";
+import OpenOrders from "@/components/OpenOrders";
 import Positions from "@/components/Positions";
 import StatsStrip from "@/components/StatsStrip";
+import TradeWheel from "@/components/TradeWheel";
 import TrailWidget from "@/components/TrailWidget";
 import {
   PERIODS,
@@ -21,8 +23,10 @@ import {
   seriesFor,
   winLabel,
 } from "@/lib/compute";
+import { usd } from "@/lib/format";
 import { hlSocket } from "@/lib/hlws";
 import { fetchRange, info } from "@/lib/hyperliquid";
+import { usePositionStep, usePriceStep } from "@/lib/tradeSteps";
 import type {
   AppData,
   ClearinghouseState,
@@ -36,6 +40,7 @@ import type {
   VaultEquity,
   WinData,
 } from "@/lib/types";
+import { NumberStepper } from "@heroui-pro/react";
 import { Alert, Button, Dropdown, Label, Modal, SearchField, Spinner, Toast, toast, useOverlayState } from "@heroui/react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
@@ -419,8 +424,14 @@ export default function Dashboard() {
           onRangeChange={handleRangeChange}
         />
         <div className="order-1 flex flex-col gap-4 lg:order-2 lg:w-[400px] lg:shrink-0">
+          <TradeWheel
+            address={state.currentUser!}
+            coin={positions[0]?.coin ?? "BTC"}
+            initialPrice={positions[0] ? +positions[0].entryPx : undefined}
+          />
+          <Positions positions={positions} address={state.currentUser!} />
+          <OpenOrders key={`orders-${state.currentUser}`} address={state.currentUser!} />
           <TrailWidget key={state.currentUser} address={state.currentUser!} />
-          <Positions positions={positions} />
           <FundingPanel fundTot={fundTot} fundingCount={activeFunding.length} wLbl={wLbl} />
           <CapitalFlows
             dep={flows.dep}
@@ -481,6 +492,9 @@ function Header({
   refreshing: boolean;
 }) {
   const setup = useOverlayState();
+  const steps = useOverlayState();
+  const [priceStep, setPriceStep] = usePriceStep();
+  const [positionStep, setPositionStep] = usePositionStep();
 
   const handleSetupSubmit = (e: React.FormEvent) => {
     onSubmit(e);
@@ -509,9 +523,17 @@ function Header({
             <MoreIcon />
           </Button>
           <Dropdown.Popover className="min-w-[180px]">
-            <Dropdown.Menu onAction={(key) => key === "setup" && setup.open()}>
+            <Dropdown.Menu
+              onAction={(key) => {
+                if (key === "setup") setup.open();
+                if (key === "steps") steps.open();
+              }}
+            >
               <Dropdown.Item id="setup" textValue="Setup account">
                 <Label>Setup account</Label>
+              </Dropdown.Item>
+              <Dropdown.Item id="steps" textValue="Step settings">
+                <Label>Step settings</Label>
               </Dropdown.Item>
             </Dropdown.Menu>
           </Dropdown.Popover>
@@ -551,6 +573,51 @@ function Header({
                 </Button>
               </Modal.Footer>
             </form>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
+
+      <Modal.Backdrop isOpen={steps.isOpen} onOpenChange={steps.setOpen}>
+        <Modal.Container size="xs">
+          <Modal.Dialog>
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Heading>Step settings</Modal.Heading>
+            </Modal.Header>
+            <Modal.Body>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm text-muted">Position step</span>
+                  <NumberStepper className="w-full" aria-label="Position step" minValue={0.001} step={0.001} value={positionStep} onChange={setPositionStep}>
+                    <NumberStepper.Group className="w-full">
+                      <NumberStepper.DecrementButton />
+                      <NumberStepper.Value className="w-full">
+                        {({ value }) => <span className="font-mono text-sm tabular-nums">{new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value)} BTC</span>}
+                      </NumberStepper.Value>
+                      <NumberStepper.IncrementButton />
+                    </NumberStepper.Group>
+                  </NumberStepper>
+                  <span className="text-xs text-muted">Increment for the Trade Wheel position-size stepper.</span>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm text-muted">Pricing step ($)</span>
+                  <NumberStepper className="w-full" aria-label="Pricing step" minValue={10} step={10} value={priceStep} onChange={setPriceStep}>
+                    <NumberStepper.Group className="w-full">
+                      <NumberStepper.DecrementButton />
+                      <NumberStepper.Value className="w-full">{({ value }) => <span className="font-mono text-sm tabular-nums">{usd(value)}</span>}</NumberStepper.Value>
+                      <NumberStepper.IncrementButton />
+                    </NumberStepper.Group>
+                  </NumberStepper>
+                  <span className="text-xs text-muted">Shared by the Trade Wheel and the trailing stop distance.</span>
+                </div>
+              </div>
+            </Modal.Body>
+            <Modal.Footer>
+              <Button className="w-full" slot="close">
+                Done
+              </Button>
+            </Modal.Footer>
           </Modal.Dialog>
         </Modal.Container>
       </Modal.Backdrop>

@@ -97,6 +97,21 @@ export type CapitalFlow = {
   to?: string;
 };
 
+export type OpenOrder = {
+  coin: string;
+  side: "B" | "A";
+  limitPx: string;
+  sz: string;
+  origSz?: string;
+  oid: number;
+  timestamp: number;
+  orderType: string;
+  reduceOnly?: boolean;
+  isTrigger?: boolean;
+  triggerPx?: string;
+  triggerCondition?: string;
+};
+
 export type CoinAgg = {
   coin: string;
   realized: number;

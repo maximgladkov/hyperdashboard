@@ -1,18 +1,20 @@
 "use client";
 
-import { Chip } from "@heroui/react";
-import { EmptyState, Widget } from "@heroui-pro/react";
+import { Button, Chip, toast } from "@heroui/react";
+import { EmptyState, PressableFeedback, Widget } from "@heroui-pro/react";
 import NumberFlow from "@number-flow/react";
 import { useEffect, useRef, useState } from "react";
 import { livePnl } from "@/lib/compute";
 import { cls, moneyFormatOptions } from "@/lib/format";
 import { hlSocket } from "@/lib/hlws";
+import { closePosition } from "@/lib/trade";
 import type { Position } from "@/lib/types";
 
 const MIDS_THROTTLE_MS = 1000;
 
-export default function Positions({ positions }: { positions: Position[] }) {
+export default function Positions({ positions, address }: { positions: Position[]; address?: string }) {
   const [mids, setMids] = useState<Record<string, number>>({});
+  const [closing, setClosing] = useState(false);
   const midsRef = useRef<Record<string, number>>({});
   const flushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const coins = positions.map((p) => p.coin).join(",");
@@ -51,6 +53,19 @@ export default function Positions({ positions }: { positions: Position[] }) {
 
   const rows = positions.map((p) => livePnl(p, mids[p.coin]));
 
+  const handleCloseAll = async () => {
+    if (!address || closing) return;
+    setClosing(true);
+    try {
+      const res = await closePosition(address);
+      toast.success(res.closed ? "Sent market close for all positions" : res.reason || "Nothing to close");
+    } catch (err) {
+      toast.danger("Close failed", { description: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setClosing(false);
+    }
+  };
+
   return (
     <Widget>
       <Widget.Header>
@@ -58,7 +73,8 @@ export default function Positions({ positions }: { positions: Position[] }) {
       </Widget.Header>
       <Widget.Content>
         {rows.length ? (
-          <div className="flex flex-col">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col">
             {rows.map((p) => (
               <div
                 key={p.coin}
@@ -87,6 +103,19 @@ export default function Positions({ positions }: { positions: Position[] }) {
                 </div>
               </div>
             ))}
+            </div>
+            {address && (
+              <Button className="w-full" fullWidth isPending={closing} size="lg" variant="danger-soft">
+                <PressableFeedback.HoldConfirm
+                  className="bg-danger text-danger-foreground"
+                  isDisabled={closing}
+                  onComplete={handleCloseAll}
+                >
+                  Release to close all
+                </PressableFeedback.HoldConfirm>
+                {closing ? "Closing…" : "Hold to close all positions"}
+              </Button>
+            )}
           </div>
         ) : (
           <EmptyState size="sm">

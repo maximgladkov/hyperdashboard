@@ -2,6 +2,7 @@
 
 import { moneyFormatOptions } from "@/lib/format";
 import { info } from "@/lib/hyperliquid";
+import { usePriceStep } from "@/lib/tradeSteps";
 import type { TenantState, TrailType } from "@/lib/trail";
 import { EmptyState, NumberStepper, Widget } from "@heroui-pro/react";
 import { Chip, Separator, Spinner, Switch } from "@heroui/react";
@@ -14,11 +15,10 @@ const PCT_MIN = 0.001;
 const PCT_MAX = 90;
 const ABS_MIN = 50;
 const ABS_MAX = 1_000_000;
-const ABS_STEP = 50;
 const WRITE_DEBOUNCE_MS = 450;
 const ABS_FORMAT = { style: "currency", currency: "USD", maximumFractionDigits: 0, currencyDisplay: "narrowSymbol" } as Format;
 
-const roundToHundred = (n: number) => Math.round(n / ABS_STEP) * ABS_STEP;
+const roundToStep = (n: number, step: number) => Math.round(n / step) * step;
 
 type StateResponse = { managed: false } | { managed: true; state: TenantState | null } | { error: string };
 
@@ -44,6 +44,7 @@ export default function TrailWidget({ address }: { address: string }) {
   const [state, setState] = useState<TenantState | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [livePrice, setLivePrice] = useState<number | null>(null);
+  const [priceStep] = usePriceStep();
 
   const [localType, setLocalType] = useState<TrailType>("pct");
   const [localPct, setLocalPct] = useState(2);
@@ -72,7 +73,7 @@ export default function TrailWidget({ address }: { address: string }) {
             setLocalType(trail.type);
             setLocalEnabled(trail.enabled);
             if (trail.type === "pct") setLocalPct(+(trail.value * 100).toFixed(2));
-            else setLocalAbs(roundToHundred(trail.value));
+            else setLocalAbs(roundToStep(trail.value, priceStep));
           }
         }
       } catch (err) {
@@ -85,7 +86,7 @@ export default function TrailWidget({ address }: { address: string }) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [address]);
+  }, [address, priceStep]);
 
   useEffect(() => {
     if (!state?.coin) return;
@@ -129,7 +130,7 @@ export default function TrailWidget({ address }: { address: string }) {
   };
 
   const handleAbsChange = (v: number) => {
-    const rounded = roundToHundred(v);
+    const rounded = roundToStep(v, priceStep);
     setLocalAbs(rounded);
     scheduleWrite("abs", { value: rounded });
   };
@@ -216,7 +217,7 @@ export default function TrailWidget({ address }: { address: string }) {
                     formatOptions={ABS_FORMAT}
                     maxValue={ABS_MAX}
                     minValue={ABS_MIN}
-                    step={ABS_STEP}
+                    step={priceStep}
                     value={localAbs}
                     onChange={handleAbsChange}
                   >

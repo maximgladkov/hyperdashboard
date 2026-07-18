@@ -1,4 +1,4 @@
-import type { Fill, FundingEvent, LedgerEvent, WinData } from "./types";
+import type { Fill, FundingEvent, LedgerEvent, OpenOrder, WinData } from "./types";
 
 const API = "https://api.hyperliquid.xyz/info";
 
@@ -10,6 +10,14 @@ export async function info<T>(body: Record<string, unknown>): Promise<T> {
   });
   if (!r.ok) throw new Error(`API ${r.status} on ${body.type}`);
   return r.json() as Promise<T>;
+}
+
+export async function fetchOpenOrders(u: string): Promise<OpenOrder[]> {
+  try {
+    return await info<OpenOrder[]>({ type: "frontendOpenOrders", user: u });
+  } catch {
+    return [];
+  }
 }
 
 export async function fetchLedger(u: string, start: number, end: number): Promise<LedgerEvent[]> {
