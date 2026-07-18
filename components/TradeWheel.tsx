@@ -10,7 +10,7 @@ import type { TenantState } from "@/lib/trail";
 import type { OpenOrder } from "@/lib/types";
 import { useMarkPrice } from "@/lib/useMarkPrice";
 import { NumberFlowInput } from "@daformat/react-number-flow-input";
-import { Widget } from "@heroui-pro/react";
+import { PressableFeedback, Widget } from "@heroui-pro/react";
 import type { ButtonProps } from "@heroui/react";
 import { Button, ButtonGroup, Description, Modal, toast, useOverlayState } from "@heroui/react";
 import NumberFlow from "@number-flow/react";
@@ -20,6 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const POSITION_POLL_MS = 3000;
 const ORDERS_POLL_MS = 5000;
 const DOUBLE_TAP_MS = 300;
+const HOLD_MS = 1000;
 const PIXELS_PER_STEP = 32;
 const RULER_TICKS = 28;
 const MAJOR_EVERY = 2;
@@ -409,7 +410,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
           <div className="absolute top-1/2 left-4 z-10 -translate-y-1/2" onPointerDown={(e) => e.stopPropagation()}>
             <button
               aria-label="Set limit price"
-              className={`flex cursor-pointer items-center justify-center rounded-full px-3 py-1 shadow-field outline-none transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
+              className={`flex cursor-pointer items-center justify-center rounded-full px-3 py-0 shadow-field outline-none transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
               type="button"
               onClick={openPriceDialog}
             >
@@ -440,8 +441,15 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                 isPending={reducing}
                 size="sm"
                 variant="danger"
-                onPress={submitReduceOnly}
               >
+                <PressableFeedback.HoldConfirm
+                  className="bg-danger text-danger-foreground"
+                  duration={HOLD_MS}
+                  isDisabled={!address || reducing}
+                  onComplete={submitReduceOnly}
+                >
+                  {reduceOrder ? "Move" : "Reduce"} {formatSize(Math.abs(positionSize))} {coin}
+                </PressableFeedback.HoldConfirm>
                 {reduceOrder ? "Move" : "Reduce"} {formatSize(Math.abs(positionSize))} {coin}
               </ActionButton>
             )}
@@ -454,17 +462,31 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                   variant="success"
                   isDisabled={!address || (pending != null && pending !== "buy")}
                   isPending={pending === "buy"}
-                  onPress={() => submitOrder("buy")}
                 >
+                  <PressableFeedback.HoldConfirm
+                    className="bg-success text-success-foreground"
+                    duration={HOLD_MS}
+                    isDisabled={!address || pending != null}
+                    onComplete={() => submitOrder("buy")}
+                  >
+                    Long
+                  </PressableFeedback.HoldConfirm>
                   Long
                 </ActionButton>
                 <ActionButton
                   variant="danger"
                   isDisabled={!address || (pending != null && pending !== "sell")}
                   isPending={pending === "sell"}
-                  onPress={() => submitOrder("sell")}
                 >
                   <ButtonGroup.Separator />
+                  <PressableFeedback.HoldConfirm
+                    className="bg-danger text-danger-foreground"
+                    duration={HOLD_MS}
+                    isDisabled={!address || pending != null}
+                    onComplete={() => submitOrder("sell")}
+                  >
+                    Short
+                  </PressableFeedback.HoldConfirm>
                   Short
                 </ActionButton>
               </ButtonGroup>
@@ -475,8 +497,15 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                 variant={isLong ? "success" : "danger"}
                 isDisabled={!address || pending != null}
                 isPending={pending === (isLong ? "buy" : "sell")}
-                onPress={() => submitOrder(isLong ? "buy" : "sell")}
               >
+                <PressableFeedback.HoldConfirm
+                  className={isLong ? "bg-success text-success-foreground" : "bg-danger text-danger-foreground"}
+                  duration={HOLD_MS}
+                  isDisabled={!address || pending != null}
+                  onComplete={() => submitOrder(isLong ? "buy" : "sell")}
+                >
+                  {isLong ? "Long" : "Short"} @ {usd(value)}
+                </PressableFeedback.HoldConfirm>
                 {isLong ? "Long" : "Short"} @ {usd(value)}
               </ActionButton>
             )}
