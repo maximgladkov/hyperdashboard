@@ -5,6 +5,7 @@ import ChartPanel, { ChartControls } from "@/components/ChartPanel";
 import FlowsPanel from "@/components/FlowsPanel";
 import FundingPanel from "@/components/FundingPanel";
 import MarketTable from "@/components/MarketTable";
+import NotificationPrompt from "@/components/NotificationPrompt";
 import Positions from "@/components/Positions";
 import StatsStrip from "@/components/StatsStrip";
 import TrailWidget from "@/components/TrailWidget";
@@ -344,6 +345,7 @@ export default function Dashboard() {
   return (
     <>
       <Header addrInput={addrInput} onAddrChange={setAddrInput} onSubmit={handleSubmit} onRefresh={handleRefresh} refreshing={refreshing} />
+      <NotificationPrompt key={state.currentUser} address={state.currentUser!} />
       <StatsStrip
         acct={acct}
         periodValues={periodValues}
