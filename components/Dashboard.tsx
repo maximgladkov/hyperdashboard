@@ -34,7 +34,7 @@ import type {
   VaultEquity,
   WinData,
 } from "@/lib/types";
-import { Alert, Button, SearchField, Spinner, Toast, toast } from "@heroui/react";
+import { Alert, Button, Dropdown, Label, Modal, SearchField, Spinner, Toast, toast, useOverlayState } from "@heroui/react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 const DEFAULT_ADDR = "0x78e497a06B12d767371389EbD04baF7C8225a98b";
@@ -402,6 +402,16 @@ function RefreshIcon() {
   );
 }
 
+function MoreIcon() {
+  return (
+    <svg fill="currentColor" height="18" viewBox="0 0 24 24" width="18">
+      <circle cx="12" cy="5" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="12" cy="19" r="1.8" />
+    </svg>
+  );
+}
+
 function Header({
   addrInput,
   onAddrChange,
@@ -415,40 +425,80 @@ function Header({
   onRefresh: () => void;
   refreshing: boolean;
 }) {
+  const setup = useOverlayState();
+
+  const handleSetupSubmit = (e: React.FormEvent) => {
+    onSubmit(e);
+    setup.close();
+  };
+
   return (
     <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
       <div>
         <div className="font-mono text-[11px] tracking-[.18em] text-accent">HYPERLIQUID &middot; PERPS ACCOUNT</div>
         <h1 className="mt-1.5 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Profit ledger</h1>
       </div>
-      <form className="flex w-full flex-col gap-2 sm:max-w-[560px] sm:flex-1 sm:basis-[340px] sm:flex-row" onSubmit={onSubmit}>
-        <SearchField
-          className="flex-1"
-          aria-label="Wallet address"
-          value={addrInput}
-          onChange={onAddrChange}
+      <div className="flex items-center gap-2">
+        <Button
+          isIconOnly
+          isPending={refreshing}
+          variant="ghost"
+          aria-label="Refresh data"
+          type="button"
+          onPress={onRefresh}
         >
-          <SearchField.Group className="font-mono text-sm">
-            <SearchField.Input spellCheck={false} placeholder="0x…" />
-            <SearchField.ClearButton />
-          </SearchField.Group>
-        </SearchField>
-        <div className="flex items-center gap-2">
-          <Button className="flex-1 sm:flex-initial" type="submit" variant="primary" size="sm">
-            Load
+          {({ isPending }) => (isPending ? <Spinner color="current" size="sm" /> : <RefreshIcon />)}
+        </Button>
+        <Dropdown>
+          <Button isIconOnly variant="ghost" aria-label="Account menu">
+            <MoreIcon />
           </Button>
-          <Button
-            isIconOnly
-            isPending={refreshing}
-            variant="ghost"
-            aria-label="Refresh data"
-            type="button"
-            onPress={onRefresh}
-          >
-            {({ isPending }) => (isPending ? <Spinner color="current" size="sm" /> : <RefreshIcon />)}
-          </Button>
-        </div>
-      </form>
+          <Dropdown.Popover className="min-w-[180px]">
+            <Dropdown.Menu onAction={(key) => key === "setup" && setup.open()}>
+              <Dropdown.Item id="setup" textValue="Setup account">
+                <Label>Setup account</Label>
+              </Dropdown.Item>
+            </Dropdown.Menu>
+          </Dropdown.Popover>
+        </Dropdown>
+      </div>
+
+      <Modal.Backdrop isOpen={setup.isOpen} onOpenChange={setup.setOpen}>
+        <Modal.Container placement="auto">
+          <Modal.Dialog className="sm:max-w-md">
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Heading>Setup account</Modal.Heading>
+              <p className="mt-1.5 mb-2 text-sm leading-5 text-muted">
+                Enter a wallet address to load its Hyperliquid perps ledger.
+              </p>
+            </Modal.Header>
+            <form onSubmit={handleSetupSubmit}>
+              <Modal.Body>
+                <SearchField
+                  className="w-full"
+                  aria-label="Wallet address"
+                  value={addrInput}
+                  onChange={onAddrChange}
+                >
+                  <SearchField.Group className="font-mono text-sm">
+                    <SearchField.Input spellCheck={false} placeholder="0x…" />
+                    <SearchField.ClearButton />
+                  </SearchField.Group>
+                </SearchField>
+              </Modal.Body>
+              <Modal.Footer>
+                <Button slot="close" variant="secondary" type="button">
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary">
+                  Load
+                </Button>
+              </Modal.Footer>
+            </form>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </header>
   );
 }
