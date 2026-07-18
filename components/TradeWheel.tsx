@@ -4,7 +4,7 @@ import { moneyFormatOptions, usd } from "@/lib/format";
 import { hlSocket } from "@/lib/hlws";
 import { fetchOpenOrders } from "@/lib/hyperliquid";
 import { orderLabel, orderPrice } from "@/lib/orders";
-import { placeOrder } from "@/lib/trade";
+import { cancelOrder, placeOrder } from "@/lib/trade";
 import { usePositionStep, usePriceStep } from "@/lib/tradeSteps";
 import type { TenantState } from "@/lib/trail";
 import type { OpenOrder } from "@/lib/types";
@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const THROTTLE_MS = 500;
 const POSITION_POLL_MS = 3000;
 const ORDERS_POLL_MS = 5000;
-const IDLE_RESET_MS = 15000;
+const DOUBLE_TAP_MS = 300;
 const PIXELS_PER_STEP = 32;
 const RULER_TICKS = 28;
 const MAJOR_EVERY = 2;
@@ -84,16 +84,18 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
   const [entryPx, setEntryPx] = useState<number | null>(null);
   const [stopPx, setStopPx] = useState<number | null>(null);
   const [positionSize, setPositionSize] = useState<number | null>(null);
+  const [positionSide, setPositionSide] = useState<"long" | "short" | null>(null);
   const [orders, setOrders] = useState<OpenOrder[]>([]);
   const [size, setSize] = useState(0.01);
   const [pending, setPending] = useState<"buy" | "sell" | null>(null);
+  const [reducing, setReducing] = useState(false);
   const [sizeStep] = usePositionStep();
   const [priceStep] = usePriceStep();
 
   const value = following ? mark : heldValue;
 
   const dragRef = useRef<DragState | null>(null);
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTapRef = useRef(0);
 
   useEffect(() => {
     let latest: number | null = null;
@@ -122,6 +124,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
       setEntryPx(null);
       setStopPx(null);
       setPositionSize(null);
+      setPositionSide(null);
       return;
     }
     let cancelled = false;
@@ -134,15 +137,18 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
           setEntryPx(null);
           setStopPx(null);
           setPositionSize(null);
+          setPositionSide(null);
           return;
         }
         setEntryPx(state.position?.entryPx ?? null);
         setStopPx(state.stop?.triggerPx ?? null);
         setPositionSize(state.position?.size ?? null);
+        setPositionSide(state.position?.side ?? null);
       } catch {
         setEntryPx(null);
         setStopPx(null);
         setPositionSize(null);
+        setPositionSide(null);
       }
     };
     poll();
@@ -174,27 +180,11 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
 
   const step = priceStep;
 
-  const clearIdleTimer = useCallback(() => {
-    if (idleTimerRef.current != null) {
-      clearTimeout(idleTimerRef.current);
-      idleTimerRef.current = null;
-    }
-  }, []);
-
   const handleReset = useCallback(() => {
-    clearIdleTimer();
     setFollowing(true);
     setInputEpoch((n) => n + 1);
     if (mark != null) setHeldValue(mark);
-  }, [mark, clearIdleTimer]);
-
-  const scheduleIdleReset = useCallback(() => {
-    clearIdleTimer();
-    idleTimerRef.current = setTimeout(() => {
-      idleTimerRef.current = null;
-      handleReset();
-    }, IDLE_RESET_MS);
-  }, [clearIdleTimer, handleReset]);
+  }, [mark]);
 
   const submitOrder = useCallback(
     async (side: "buy" | "sell") => {
@@ -223,21 +213,59 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
     [address, pending, following, value, size, coin, handleReset]
   );
 
-  useEffect(() => () => clearIdleTimer(), [clearIdleTimer]);
+  const reduceOrder = useMemo(() => orders.find((o) => o.reduceOnly) ?? null, [orders]);
+
+  const submitReduceOnly = useCallback(async () => {
+    if (!address || reducing || positionSide == null || positionSize == null) return;
+    const side = positionSide === "long" ? "sell" : "buy";
+    const reduceSize = Math.abs(positionSize);
+    const limitPrice = following ? null : value;
+    const moving = reduceOrder != null;
+    setReducing(true);
+    try {
+      if (reduceOrder != null) {
+        await cancelOrder(address, reduceOrder.oid);
+        setOrders((prev) => prev.filter((o) => o.oid !== reduceOrder.oid));
+      }
+      const { order } = await placeOrder(address, { side, size: reduceSize, price: limitPrice, reduceOnly: true });
+      if (order.status === "resting") {
+        toast.success(moving ? "Reduce-only order moved" : "Reduce-only limit resting", {
+          description: `${formatSize(reduceSize)} ${coin} @ ${usd(limitPrice)}`,
+        });
+      } else {
+        toast.success("Position reduced", {
+          description: `${formatSize(order.filledSz)} ${coin} @ ${usd(order.avgPx)}`,
+        });
+      }
+      handleReset();
+    } catch (err) {
+      toast.danger(moving ? "Reduce-only move failed" : "Reduce-only order failed", {
+        description: (err as Error).message,
+      });
+    } finally {
+      setReducing(false);
+    }
+  }, [address, reducing, positionSide, positionSize, following, value, coin, reduceOrder, handleReset]);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      const now = e.timeStamp;
+      if (now - lastTapRef.current < DOUBLE_TAP_MS) {
+        lastTapRef.current = 0;
+        handleReset();
+        return;
+      }
+      lastTapRef.current = now;
       e.currentTarget.setPointerCapture(e.pointerId);
       setFollowing(false);
       setIsDragging(true);
       setInputEpoch((n) => n + 1);
-      scheduleIdleReset();
       dragRef.current = {
         startY: e.clientY,
         startValue: value ?? mark ?? 0,
       };
     },
-    [value, mark, scheduleIdleReset]
+    [value, mark, handleReset]
   );
 
   const handlePointerMove = useCallback(
@@ -246,18 +274,14 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
       if (!drag) return;
       const dyTotal = e.clientY - drag.startY;
       setHeldValue(drag.startValue + (dyTotal / PIXELS_PER_STEP) * step);
-      scheduleIdleReset();
     },
-    [step, scheduleIdleReset]
+    [step]
   );
 
   const handlePointerUp = useCallback(() => {
-    const drag = dragRef.current;
     dragRef.current = null;
     setIsDragging(false);
-    if (!drag) return;
-    scheduleIdleReset();
-  }, [scheduleIdleReset]);
+  }, []);
 
   const centerIndex = value != null ? Math.round(value / step) : 0;
   const ticks = useMemo(() => {
@@ -412,27 +436,24 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                 onFocus={() => {
                   setHeldValue(value);
                   setFollowing(false);
-                  scheduleIdleReset();
                 }}
                 onChange={(v) => {
                   if (v == null) return;
                   setFollowing(false);
                   setHeldValue(v);
-                  scheduleIdleReset();
                 }}
                 onBlur={() => {
                   setInputEpoch((n) => n + 1);
-                  scheduleIdleReset();
                 }}
               />
             </div>
           </div>
 
-          <div className="absolute inset-x-3 top-3 z-10 flex justify-center" onPointerDown={(e) => e.stopPropagation()}>
+          <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-2" onPointerDown={(e) => e.stopPropagation()}>
             <NumberStepper aria-label="Position size" minValue={sizeStep} step={sizeStep} value={size} onChange={setSize}>
               <NumberStepper.Group>
                 <NumberStepper.DecrementButton />
-                <NumberStepper.Value className="mx-3">
+                <NumberStepper.Value className="mx-2">
                   {({ value }) => (
                     <span className="font-mono text-xs tabular-nums">
                       {new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value)} {coin}
@@ -442,27 +463,20 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                 <NumberStepper.IncrementButton />
               </NumberStepper.Group>
             </NumberStepper>
-          </div>
-
-          <Button
-            aria-label={following ? "Following mark price" : "Reset to mark price"}
-            className="absolute top-3 left-3 z-10 font-mono text-[11px]"
-            isDisabled={following}
-            size="sm"
-            variant="ghost"
-            onPointerDown={(e) => e.stopPropagation()}
-            onPress={handleReset}
-          >
-            {following ? (
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
-              </span>
-            ) : (
-              <ResetIcon />
+            {positionSize != null && positionSide != null && (
+              <ActionButton
+                aria-label={reduceOrder ? "Move reduce-only order to selected price" : "Reduce-only order matching position size"}
+                className="font-mono text-[11px]"
+                isDisabled={!address || reducing}
+                isPending={reducing}
+                size="sm"
+                variant="danger"
+                onPress={submitReduceOnly}
+              >
+                {reduceOrder ? "Move" : "Reduce"} {formatSize(Math.abs(positionSize))} {coin}
+              </ActionButton>
             )}
-            {following ? "Live" : "Reset"}
-          </Button>
+          </div>
 
           <div className="absolute inset-x-3 bottom-3 z-10 flex flex-col gap-2" onPointerDown={(e) => e.stopPropagation()}>
             {following ? (
@@ -501,14 +515,5 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
         </div>
       </Widget.Content>
     </Widget>
-  );
-}
-
-function ResetIcon() {
-  return (
-    <svg fill="none" height="12" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" viewBox="0 0 24 24" width="12">
-      <path d="M3 12a9 9 0 0 1 15.3-6.4L21 8M21 3v5h-5" />
-      <path d="M21 12a9 9 0 0 1-15.3 6.4L3 16M3 21v-5h5" />
-    </svg>
   );
 }
