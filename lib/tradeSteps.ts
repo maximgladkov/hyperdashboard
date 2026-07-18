@@ -50,9 +50,11 @@ function createStepStore(storageKey: string, defaultValue: number) {
 
 export const DEFAULT_PRICE_STEP = 50;
 export const DEFAULT_POSITION_STEP = 0.001;
+export const DEFAULT_TRADE_SIZE = 0.01;
 
 const priceStepStore = createStepStore("hd.priceStep", DEFAULT_PRICE_STEP);
 const positionStepStore = createStepStore("hd.positionStep", DEFAULT_POSITION_STEP);
+const tradeSizeStore = createStepStore("hd.tradeSize", DEFAULT_TRADE_SIZE);
 
 export const getPriceStep = priceStepStore.get;
 export const setPriceStep = priceStepStore.set;
@@ -63,3 +65,8 @@ export const getPositionStep = positionStepStore.get;
 export const setPositionStep = positionStepStore.set;
 export const subscribePositionStep = positionStepStore.subscribe;
 export const usePositionStep = positionStepStore.useStep;
+
+export const getTradeSize = tradeSizeStore.get;
+export const setTradeSize = tradeSizeStore.set;
+export const subscribeTradeSize = tradeSizeStore.subscribe;
+export const useTradeSize = tradeSizeStore.useStep;

@@ -4,7 +4,7 @@ import { moneyFormatOptions, usd } from "@/lib/format";
 import { fetchOpenOrders } from "@/lib/hyperliquid";
 import { orderLabel, orderPrice } from "@/lib/orders";
 import { cancelOrder, placeOrder } from "@/lib/trade";
-import { usePositionStep, usePriceStep } from "@/lib/tradeSteps";
+import { usePositionStep, usePriceStep, useTradeSize } from "@/lib/tradeSteps";
 import { useMarkPrice } from "@/lib/useMarkPrice";
 import type { TenantState } from "@/lib/trail";
 import type { OpenOrder } from "@/lib/types";
@@ -81,7 +81,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
   const [positionSize, setPositionSize] = useState<number | null>(null);
   const [positionSide, setPositionSide] = useState<"long" | "short" | null>(null);
   const [orders, setOrders] = useState<OpenOrder[]>([]);
-  const [size, setSize] = useState(0.01);
+  const [size, setSize] = useTradeSize();
   const [pending, setPending] = useState<"buy" | "sell" | null>(null);
   const [reducing, setReducing] = useState(false);
   const [sizeStep] = usePositionStep();
