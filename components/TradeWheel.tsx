@@ -1,14 +1,14 @@
 "use client";
 
+import { StepperField } from "@/components/StepperField";
 import { moneyFormatOptions, usd } from "@/lib/format";
 import { fetchOpenOrders } from "@/lib/hyperliquid";
 import { orderLabel, orderPrice } from "@/lib/orders";
 import { cancelOrder, placeOrder } from "@/lib/trade";
 import { usePositionStep, usePriceStep, useTradeSize } from "@/lib/tradeSteps";
-import { useMarkPrice } from "@/lib/useMarkPrice";
 import type { TenantState } from "@/lib/trail";
 import type { OpenOrder } from "@/lib/types";
-import { StepperField } from "@/components/StepperField";
+import { useMarkPrice } from "@/lib/useMarkPrice";
 import { NumberFlowInput } from "@daformat/react-number-flow-input";
 import { Widget } from "@heroui-pro/react";
 import type { ButtonProps } from "@heroui/react";
@@ -409,7 +409,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
           <div className="absolute top-1/2 left-4 z-10 -translate-y-1/2" onPointerDown={(e) => e.stopPropagation()}>
             <button
               aria-label="Set limit price"
-              className={`flex cursor-pointer items-center justify-center rounded-full px-3 py-2 shadow-field outline-none transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
+              className={`flex cursor-pointer items-center justify-center rounded-full px-3 py-1 shadow-field outline-none transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
               type="button"
               onClick={openPriceDialog}
             >
