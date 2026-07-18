@@ -12,7 +12,7 @@ import { StepperField } from "@/components/StepperField";
 import { NumberFlowInput } from "@daformat/react-number-flow-input";
 import { Widget } from "@heroui-pro/react";
 import type { ButtonProps } from "@heroui/react";
-import { Button, ButtonGroup, toast } from "@heroui/react";
+import { Button, ButtonGroup, Description, Modal, toast, useOverlayState } from "@heroui/react";
 import NumberFlow from "@number-flow/react";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -75,7 +75,6 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
   const [heldValue, setHeldValue] = useState<number | null>(initialPrice ?? null);
   const [following, setFollowing] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
-  const [inputEpoch, setInputEpoch] = useState(0);
   const [entryPx, setEntryPx] = useState<number | null>(null);
   const [stopPx, setStopPx] = useState<number | null>(null);
   const [positionSize, setPositionSize] = useState<number | null>(null);
@@ -86,6 +85,8 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
   const [reducing, setReducing] = useState(false);
   const [sizeStep] = usePositionStep();
   const [priceStep] = usePriceStep();
+  const priceDialog = useOverlayState();
+  const [priceDraft, setPriceDraft] = useState<number | null>(null);
 
   const value = following ? mark : heldValue;
 
@@ -155,9 +156,21 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
 
   const handleReset = useCallback(() => {
     setFollowing(true);
-    setInputEpoch((n) => n + 1);
     if (mark != null) setHeldValue(mark);
   }, [mark]);
+
+  const openPriceDialog = useCallback(() => {
+    setPriceDraft(null);
+    priceDialog.open();
+  }, [priceDialog]);
+
+  const confirmPrice = useCallback(() => {
+    if (priceDraft != null) {
+      setFollowing(false);
+      setHeldValue(priceDraft);
+    }
+    priceDialog.close();
+  }, [priceDraft, priceDialog]);
 
   const submitOrder = useCallback(
     async (side: "buy" | "sell") => {
@@ -232,7 +245,6 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
       e.currentTarget.setPointerCapture(e.pointerId);
       setFollowing(false);
       setIsDragging(true);
-      setInputEpoch((n) => n + 1);
       dragRef.current = {
         startY: e.clientY,
         startValue: value ?? mark ?? 0,
@@ -397,30 +409,18 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
           </div>
 
           <div className="absolute top-1/2 left-4 z-10 -translate-y-1/2" onPointerDown={(e) => e.stopPropagation()}>
-            <div
-              className={`flex items-center justify-center rounded-full px-3 py-2 shadow-field transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
+            <button
+              aria-label="Set limit price"
+              className={`flex cursor-pointer items-center justify-center rounded-full px-3 py-2 shadow-field outline-none transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
+              type="button"
+              onClick={openPriceDialog}
             >
-              <NumberFlowInput
-                key={`${coin}-${inputEpoch}`}
-                className={`text-3xl font-bold tabular-nums outline-none text-foreground`}
-                decimalScale={0}
-                format={formatCurrencyInput}
-                isAllowed={(v) => v == null || v >= 0}
-                placeholder={usd(effectiveValue)}
-                onFocus={() => {
-                  setHeldValue(value);
-                  setFollowing(false);
-                }}
-                onChange={(v) => {
-                  if (v == null) return;
-                  setFollowing(false);
-                  setHeldValue(v);
-                }}
-                onBlur={() => {
-                  setInputEpoch((n) => n + 1);
-                }}
+              <NumberFlow
+                className="text-3xl font-bold tabular-nums text-foreground"
+                format={moneyFormatOptions(effectiveValue)}
+                value={effectiveValue}
               />
-            </div>
+            </button>
           </div>
 
           <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-2" onPointerDown={(e) => e.stopPropagation()}>
@@ -485,6 +485,45 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
           </div>
         </div>
       </Widget.Content>
+
+      <Modal.Backdrop isOpen={priceDialog.isOpen} onOpenChange={priceDialog.setOpen}>
+        <Modal.Container size="xs">
+          <Modal.Dialog>
+            <Modal.CloseTrigger />
+            <Modal.Header>
+              <Modal.Heading>Limit price · {coin}</Modal.Heading>
+            </Modal.Header>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                confirmPrice();
+              }}
+            >
+              <Modal.Body className="flex flex-col items-start justify-center gap-3 pt-4">
+                <NumberFlowInput
+                  autoFocus
+                  className="text-foreground text-3xl font-bold tabular-nums outline-none"
+                  decimalScale={0}
+                  format={formatCurrencyInput}
+                  isAllowed={(v) => v == null || v >= 0}
+                  placeholder={usd(effectiveValue)}
+                  value={priceDraft ?? ""}
+                  onChange={(v) => setPriceDraft(v ?? null)}
+                />
+                <Description>Mark {usd(mark ?? 0)}</Description>
+              </Modal.Body>
+              <Modal.Footer>
+                <Button slot="close" type="button" variant="secondary">
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary">
+                  Confirm
+                </Button>
+              </Modal.Footer>
+            </form>
+          </Modal.Dialog>
+        </Modal.Container>
+      </Modal.Backdrop>
     </Widget>
   );
 }
