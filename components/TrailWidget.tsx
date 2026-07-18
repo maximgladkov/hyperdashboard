@@ -12,9 +12,9 @@ import type { Key } from "react-aria-components";
 const POLL_MS = 3000;
 const PCT_MIN = 0.001;
 const PCT_MAX = 90;
-const ABS_MIN = 100;
+const ABS_MIN = 50;
 const ABS_MAX = 1_000_000;
-const ABS_STEP = 100;
+const ABS_STEP = 50;
 const WRITE_DEBOUNCE_MS = 450;
 const ABS_FORMAT = { style: "currency", currency: "USD", maximumFractionDigits: 0, currencyDisplay: "narrowSymbol" } as Format;
 
