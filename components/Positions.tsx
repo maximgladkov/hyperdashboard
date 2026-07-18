@@ -1,9 +1,10 @@
 "use client";
 
 import { Button, Chip, toast } from "@heroui/react";
-import { EmptyState, PressableFeedback, Widget } from "@heroui-pro/react";
+import { EmptyState, Widget } from "@heroui-pro/react";
 import NumberFlow from "@number-flow/react";
 import { useState } from "react";
+import { useConfirm } from "@/components/ConfirmDialog";
 import { livePnl } from "@/lib/compute";
 import { cls, moneyFormatOptions } from "@/lib/format";
 import { closePosition } from "@/lib/trade";
@@ -13,6 +14,7 @@ import type { Position } from "@/lib/types";
 export default function Positions({ positions, address }: { positions: Position[]; address?: string }) {
   const [closing, setClosing] = useState(false);
   const mids = useMarkPrices();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const rows = positions.map((p) => livePnl(p, mids[p.coin]));
 
@@ -68,17 +70,26 @@ export default function Positions({ positions, address }: { positions: Position[
             ))}
             </div>
             {address && (
-              <Button className="w-full" fullWidth isPending={closing} size="lg" variant="danger-soft">
-                <PressableFeedback.HoldConfirm
-                  className="bg-danger text-danger-foreground"
-                  isDisabled={closing}
-                  onComplete={handleCloseAll}
-                >
-                  Release to close all
-                </PressableFeedback.HoldConfirm>
-                {closing ? "Closing…" : "Hold to close all positions"}
+              <Button
+                className="w-full"
+                fullWidth
+                isDisabled={closing}
+                isPending={closing}
+                size="lg"
+                variant="danger-soft"
+                onPress={() =>
+                  confirm(handleCloseAll, {
+                    title: "Close all positions",
+                    body: `Send a market close for all ${rows.length} open position${rows.length === 1 ? "" : "s"}.`,
+                    confirmLabel: "Close all",
+                    confirmVariant: "danger",
+                  })
+                }
+              >
+                {closing ? "Closing…" : "Close all positions"}
               </Button>
             )}
+            {confirmDialog}
           </div>
         ) : (
           <EmptyState size="sm">

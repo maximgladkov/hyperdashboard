@@ -1,12 +1,13 @@
 "use client";
 
+import { useConfirm } from "@/components/ConfirmDialog";
 import { usd } from "@/lib/format";
 import { fetchOpenOrders } from "@/lib/hyperliquid";
 import { orderLabel, orderPrice } from "@/lib/orders";
 import { cancelOrder } from "@/lib/trade";
 import type { OpenOrder } from "@/lib/types";
 import { Button, Chip, toast } from "@heroui/react";
-import { EmptyState, PressableFeedback, Widget } from "@heroui-pro/react";
+import { EmptyState, Widget } from "@heroui-pro/react";
 import { useEffect, useState } from "react";
 
 const POLL_MS = 5000;
@@ -15,6 +16,7 @@ export default function OpenOrders({ address }: { address: string }) {
   const [orders, setOrders] = useState<OpenOrder[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [cancelling, setCancelling] = useState<number | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const handleCancel = async (order: OpenOrder) => {
     if (cancelling != null) return;
@@ -80,18 +82,21 @@ export default function OpenOrders({ address }: { address: string }) {
                 </div>
                 <Button
                   className="shrink-0"
+                  isDisabled={cancelling != null}
                   isPending={cancelling === o.oid}
                   size="sm"
                   variant="danger-soft"
+                  onPress={() =>
+                    confirm(() => handleCancel(o), {
+                      title: "Cancel order",
+                      body: `Cancel ${o.side === "B" ? "buy" : "sell"} ${orderLabel(o)} · ${+o.sz} ${o.coin} @ ${usd(orderPrice(o))}.`,
+                      confirmLabel: "Cancel order",
+                      cancelLabel: "Keep",
+                      confirmVariant: "danger",
+                    })
+                  }
                 >
-                  <PressableFeedback.HoldConfirm
-                    className="bg-danger text-danger-foreground"
-                    isDisabled={cancelling != null}
-                    onComplete={() => handleCancel(o)}
-                  >
-                    Release
-                  </PressableFeedback.HoldConfirm>
-                  {cancelling === o.oid ? "Cancelling…" : "Hold to cancel"}
+                  {cancelling === o.oid ? "Cancelling…" : "Cancel"}
                 </Button>
               </div>
             ))}
@@ -105,6 +110,7 @@ export default function OpenOrders({ address }: { address: string }) {
           </EmptyState>
         )}
       </Widget.Content>
+      {confirmDialog}
     </Widget>
   );
 }

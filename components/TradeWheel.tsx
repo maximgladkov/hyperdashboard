@@ -1,5 +1,6 @@
 "use client";
 
+import { useConfirm } from "@/components/ConfirmDialog";
 import { StepperField } from "@/components/StepperField";
 import { moneyFormatOptions, usd } from "@/lib/format";
 import { fetchOpenOrders } from "@/lib/hyperliquid";
@@ -10,7 +11,7 @@ import type { TenantState } from "@/lib/trail";
 import type { OpenOrder } from "@/lib/types";
 import { useMarkPrice } from "@/lib/useMarkPrice";
 import { NumberFlowInput } from "@daformat/react-number-flow-input";
-import { PressableFeedback, Widget } from "@heroui-pro/react";
+import { Widget } from "@heroui-pro/react";
 import type { ButtonProps } from "@heroui/react";
 import { Button, ButtonGroup, Description, Modal, toast, useOverlayState } from "@heroui/react";
 import NumberFlow from "@number-flow/react";
@@ -20,7 +21,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 const POSITION_POLL_MS = 3000;
 const ORDERS_POLL_MS = 5000;
 const DOUBLE_TAP_MS = 300;
-const HOLD_MS = 1000;
 const PIXELS_PER_STEP = 32;
 const RULER_TICKS = 28;
 const MAJOR_EVERY = 2;
@@ -88,6 +88,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
   const [priceStep] = usePriceStep();
   const priceDialog = useOverlayState();
   const [priceDraft, setPriceDraft] = useState<number | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const value = following ? mark : heldValue;
 
@@ -306,7 +307,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
       </Widget.Header>
       <Widget.Content className="p-0">
         <div
-          className={`relative aspect-square w-full touch-none select-none overflow-hidden bg-surface ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
+          className={`relative aspect-square min-h-[360px] w-full touch-none select-none overflow-hidden bg-surface ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
           onPointerCancel={handlePointerUp}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
@@ -441,15 +442,15 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                 isPending={reducing}
                 size="sm"
                 variant="danger"
+                onPress={() =>
+                  confirm(submitReduceOnly, {
+                    title: reduceOrder ? "Move reduce-only order" : "Reduce position",
+                    body: `${reduceOrder ? "Move" : "Place"} a reduce-only order for ${formatSize(Math.abs(positionSize))} ${coin}${following ? " at market" : ` @ ${usd(value)}`}.`,
+                    confirmLabel: reduceOrder ? "Move" : "Reduce",
+                    confirmVariant: "danger",
+                  })
+                }
               >
-                <PressableFeedback.HoldConfirm
-                  className="bg-danger text-danger-foreground"
-                  duration={HOLD_MS}
-                  isDisabled={!address || reducing}
-                  onComplete={submitReduceOnly}
-                >
-                  {reduceOrder ? "Move" : "Reduce"} {formatSize(Math.abs(positionSize))} {coin}
-                </PressableFeedback.HoldConfirm>
                 {reduceOrder ? "Move" : "Reduce"} {formatSize(Math.abs(positionSize))} {coin}
               </ActionButton>
             )}
@@ -462,31 +463,31 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                   variant="success"
                   isDisabled={!address || (pending != null && pending !== "buy")}
                   isPending={pending === "buy"}
+                  onPress={() =>
+                    confirm(() => submitOrder("buy"), {
+                      title: "Confirm long",
+                      body: `Market long ${formatSize(size)} ${coin}.`,
+                      confirmLabel: "Long",
+                      confirmVariant: "success",
+                    })
+                  }
                 >
-                  <PressableFeedback.HoldConfirm
-                    className="bg-success text-success-foreground"
-                    duration={HOLD_MS}
-                    isDisabled={!address || pending != null}
-                    onComplete={() => submitOrder("buy")}
-                  >
-                    Long
-                  </PressableFeedback.HoldConfirm>
                   Long
                 </ActionButton>
                 <ActionButton
                   variant="danger"
                   isDisabled={!address || (pending != null && pending !== "sell")}
                   isPending={pending === "sell"}
+                  onPress={() =>
+                    confirm(() => submitOrder("sell"), {
+                      title: "Confirm short",
+                      body: `Market short ${formatSize(size)} ${coin}.`,
+                      confirmLabel: "Short",
+                      confirmVariant: "danger",
+                    })
+                  }
                 >
                   <ButtonGroup.Separator />
-                  <PressableFeedback.HoldConfirm
-                    className="bg-danger text-danger-foreground"
-                    duration={HOLD_MS}
-                    isDisabled={!address || pending != null}
-                    onComplete={() => submitOrder("sell")}
-                  >
-                    Short
-                  </PressableFeedback.HoldConfirm>
                   Short
                 </ActionButton>
               </ButtonGroup>
@@ -497,15 +498,15 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                 variant={isLong ? "success" : "danger"}
                 isDisabled={!address || pending != null}
                 isPending={pending === (isLong ? "buy" : "sell")}
+                onPress={() =>
+                  confirm(() => submitOrder(isLong ? "buy" : "sell"), {
+                    title: isLong ? "Confirm long" : "Confirm short",
+                    body: `Limit ${isLong ? "long" : "short"} ${formatSize(size)} ${coin} @ ${usd(value)}.`,
+                    confirmLabel: isLong ? "Long" : "Short",
+                    confirmVariant: isLong ? "success" : "danger",
+                  })
+                }
               >
-                <PressableFeedback.HoldConfirm
-                  className={isLong ? "bg-success text-success-foreground" : "bg-danger text-danger-foreground"}
-                  duration={HOLD_MS}
-                  isDisabled={!address || pending != null}
-                  onComplete={() => submitOrder(isLong ? "buy" : "sell")}
-                >
-                  {isLong ? "Long" : "Short"} @ {usd(value)}
-                </PressableFeedback.HoldConfirm>
                 {isLong ? "Long" : "Short"} @ {usd(value)}
               </ActionButton>
             )}
@@ -551,6 +552,8 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
           </Modal.Dialog>
         </Modal.Container>
       </Modal.Backdrop>
+
+      {confirmDialog}
     </Widget>
   );
 }
