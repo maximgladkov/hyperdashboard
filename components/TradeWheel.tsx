@@ -23,8 +23,6 @@ const IDLE_RESET_MS = 15000;
 const PIXELS_PER_STEP = 32;
 const RULER_TICKS = 28;
 const MAJOR_EVERY = 2;
-const INERTIA_FRICTION = 0.0035;
-const INERTIA_STOP_FACTOR = 0.05;
 const RULER_WIDTH_PX = 64;
 
 function formatTick(v: number, decimals: number): string {
@@ -75,7 +73,7 @@ async function fetchTrailState(address: string): Promise<TrailStateResponse> {
   return r.json();
 }
 
-type DragState = { startY: number; startValue: number; lastY: number; lastT: number; velocity: number };
+type DragState = { startY: number; startValue: number };
 
 export default function TradeWheel({ coin, initialPrice, address }: { coin: string; initialPrice?: number; address?: string }) {
   const [mark, setMark] = useState<number | null>(initialPrice ?? null);
@@ -95,7 +93,6 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
   const value = following ? mark : heldValue;
 
   const dragRef = useRef<DragState | null>(null);
-  const inertiaRef = useRef<number | null>(null);
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -175,37 +172,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
     };
   }, [address, coin]);
 
-  const cancelInertia = useCallback(() => {
-    if (inertiaRef.current != null) {
-      cancelAnimationFrame(inertiaRef.current);
-      inertiaRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => () => cancelInertia(), [cancelInertia]);
-
   const step = priceStep;
-
-  const runInertia = useCallback(
-    (initialVelocity: number) => {
-      let velocity = initialVelocity;
-      let last = performance.now();
-      const frame = (now: number) => {
-        const dt = now - last;
-        last = now;
-        velocity *= Math.exp(-INERTIA_FRICTION * dt);
-        setHeldValue((v) => (v ?? 0) + velocity * dt);
-        if (Math.abs(velocity) * 1000 > priceStep * INERTIA_STOP_FACTOR) {
-          inertiaRef.current = requestAnimationFrame(frame);
-        } else {
-          inertiaRef.current = null;
-          setHeldValue((v) => (v == null ? v : Math.round(v)));
-        }
-      };
-      inertiaRef.current = requestAnimationFrame(frame);
-    },
-    [priceStep]
-  );
 
   const clearIdleTimer = useCallback(() => {
     if (idleTimerRef.current != null) {
@@ -215,12 +182,11 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
   }, []);
 
   const handleReset = useCallback(() => {
-    cancelInertia();
     clearIdleTimer();
     setFollowing(true);
     setInputEpoch((n) => n + 1);
     if (mark != null) setHeldValue(mark);
-  }, [mark, cancelInertia, clearIdleTimer]);
+  }, [mark, clearIdleTimer]);
 
   const scheduleIdleReset = useCallback(() => {
     clearIdleTimer();
@@ -261,7 +227,6 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
-      cancelInertia();
       e.currentTarget.setPointerCapture(e.pointerId);
       setFollowing(false);
       setIsDragging(true);
@@ -270,12 +235,9 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
       dragRef.current = {
         startY: e.clientY,
         startValue: value ?? mark ?? 0,
-        lastY: e.clientY,
-        lastT: e.timeStamp,
-        velocity: 0,
       };
     },
-    [value, mark, cancelInertia, scheduleIdleReset]
+    [value, mark, scheduleIdleReset]
   );
 
   const handlePointerMove = useCallback(
@@ -284,13 +246,6 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
       if (!drag) return;
       const dyTotal = e.clientY - drag.startY;
       setHeldValue(drag.startValue + (dyTotal / PIXELS_PER_STEP) * step);
-      const dt = e.timeStamp - drag.lastT;
-      if (dt > 0) {
-        const dy = e.clientY - drag.lastY;
-        drag.velocity = ((dy / PIXELS_PER_STEP) * step) / dt;
-      }
-      drag.lastY = e.clientY;
-      drag.lastT = e.timeStamp;
       scheduleIdleReset();
     },
     [step, scheduleIdleReset]
@@ -302,8 +257,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
     setIsDragging(false);
     if (!drag) return;
     scheduleIdleReset();
-    runInertia(drag.velocity);
-  }, [runInertia, scheduleIdleReset]);
+  }, [scheduleIdleReset]);
 
   const centerIndex = value != null ? Math.round(value / step) : 0;
   const ticks = useMemo(() => {
