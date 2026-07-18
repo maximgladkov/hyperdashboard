@@ -1,3 +1,5 @@
+import { Format } from "@number-flow/react";
+
 export const usd = (v: unknown, sign = false): string => {
   const n = Number(v) || 0;
   const a = Math.abs(n);
@@ -17,11 +19,12 @@ export const fdate = (ms: number): string =>
 export const moneyFormatOptions = (
   v: unknown,
   sign = false
-): { style: "currency"; currency: string; maximumFractionDigits: number; signDisplay: "exceptZero" | "auto" } => {
+): Format => {
   const n = Number(v) || 0;
   return {
     style: "currency",
     currency: "USD",
+    currencyDisplay: "narrowSymbol",
     maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2,
     signDisplay: sign ? "exceptZero" : "auto",
   };

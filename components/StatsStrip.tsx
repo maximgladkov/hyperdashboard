@@ -1,6 +1,7 @@
 import { cls, moneyFormatOptions } from "@/lib/format";
 import { KPI, KPIGroup } from "@heroui-pro/react";
 import { ScrollShadow } from "@heroui/react";
+import NumberFlow from "@number-flow/react";
 
 type AccountBreakdown = { perp: number; spot: number; vault: number; staked: number; total: number };
 
@@ -59,7 +60,11 @@ export default function StatsStrip({
         <KPI.Title>{item.title}</KPI.Title>
       </KPI.Header>
       <KPI.Content>
-        <KPI.Value className={item.valueClassName} value={item.value} {...item.options} />
+        <NumberFlow
+          className={["kpi__value", item.valueClassName].filter(Boolean).join(" ")}
+          format={item.options}
+          value={item.value}
+        />
       </KPI.Content>
     </KPI>
   );

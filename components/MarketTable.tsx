@@ -1,7 +1,8 @@
-import { cls, usd } from "@/lib/format";
+import { cls, moneyFormatOptions } from "@/lib/format";
 import type { CoinAgg } from "@/lib/types";
 import { EmptyState, Widget } from "@heroui-pro/react";
 import { Table } from "@heroui/react";
+import NumberFlow from "@number-flow/react";
 
 export default function MarketTable({
   coins,
@@ -41,21 +42,37 @@ export default function MarketTable({
                   {coins.map((c) => (
                     <Table.Row key={c.coin} id={c.coin}>
                       <Table.Cell className="font-semibold text-foreground">{c.coin}</Table.Cell>
-                      <Table.Cell className={`text-right ${cls(c.realized)}`}>{usd(c.realized, true)}</Table.Cell>
-                      <Table.Cell className="text-right text-muted">{usd(-c.fees)}</Table.Cell>
-                      <Table.Cell className={`text-right font-semibold ${cls(c.net)}`}>{usd(c.net, true)}</Table.Cell>
-                      <Table.Cell className="text-right text-muted">
-                        {c.closes ? Math.round((100 * c.wins) / c.closes) + "%" : "\u2014"}
+                      <Table.Cell className={`text-right ${cls(c.realized)}`}>
+                        <NumberFlow format={moneyFormatOptions(c.realized, true)} value={c.realized} />
                       </Table.Cell>
-                      <Table.Cell className="text-right text-muted">{c.trades}</Table.Cell>
+                      <Table.Cell className="text-right text-muted">
+                        <NumberFlow format={moneyFormatOptions(-c.fees)} value={-c.fees} />
+                      </Table.Cell>
+                      <Table.Cell className={`text-right font-semibold ${cls(c.net)}`}>
+                        <NumberFlow format={moneyFormatOptions(c.net, true)} value={c.net} />
+                      </Table.Cell>
+                      <Table.Cell className="text-right text-muted">
+                        {c.closes ? (
+                          <NumberFlow format={{ style: "percent", maximumFractionDigits: 0 }} value={c.wins / c.closes} />
+                        ) : (
+                          "\u2014"
+                        )}
+                      </Table.Cell>
+                      <Table.Cell className="text-right text-muted">
+                        <NumberFlow value={c.trades} />
+                      </Table.Cell>
                     </Table.Row>
                   ))}
                   <Table.Row id="__total">
                     <Table.Cell className="text-muted font-normal">Total</Table.Cell>
-                    <Table.Cell className={`text-right ${cls(totR)}`}>{usd(totR, true)}</Table.Cell>
-                    <Table.Cell className="text-right text-muted">{usd(-totF)}</Table.Cell>
+                    <Table.Cell className={`text-right ${cls(totR)}`}>
+                      <NumberFlow format={moneyFormatOptions(totR, true)} value={totR} />
+                    </Table.Cell>
+                    <Table.Cell className="text-right text-muted">
+                      <NumberFlow format={moneyFormatOptions(-totF)} value={-totF} />
+                    </Table.Cell>
                     <Table.Cell className={`text-right font-bold ${cls(totR - totF)}`}>
-                      {usd(totR - totF, true)}
+                      <NumberFlow format={moneyFormatOptions(totR - totF, true)} value={totR - totF} />
                     </Table.Cell>
                     <Table.Cell />
                     <Table.Cell />

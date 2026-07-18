@@ -21,6 +21,7 @@ import {
   seriesFor,
   winLabel,
 } from "@/lib/compute";
+import { hlSocket } from "@/lib/hlws";
 import { fetchRange, info } from "@/lib/hyperliquid";
 import type {
   AppData,
@@ -41,6 +42,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 const DEFAULT_ADDR = "0x78e497a06B12d767371389EbD04baF7C8225a98b";
 const ADDR_STORAGE_KEY = "hlpnl:addr";
 const STALE_MS = 60 * 1000;
+const SNAPSHOT_POLL_MS = 30 * 1000;
 
 type State = {
   D: AppData | null;
@@ -70,6 +72,8 @@ type Action =
   | { type: "LOAD_START"; soft: boolean }
   | { type: "LOAD_SUCCESS"; D: AppData; currentUser: string; winData: WinData; period: Period; range: Range | null }
   | { type: "LOAD_ERROR"; soft: boolean; message: string }
+  | { type: "SNAPSHOT_SUCCESS"; D: AppData }
+  | { type: "LIVE_PATCH"; patch: Partial<AppData> }
   | { type: "SET_METRIC"; metric: Metric }
   | { type: "PERIOD_PENDING"; period: Period }
   | { type: "PERIOD_SUCCESS"; period: Period; range: Range | null; winData: WinData }
@@ -92,6 +96,10 @@ function reducer(state: State, action: Action): State {
       };
     case "LOAD_ERROR":
       return action.soft ? state : { ...state, loading: false, error: action.message };
+    case "SNAPSHOT_SUCCESS":
+      return state.D ? { ...state, D: action.D } : state;
+    case "LIVE_PATCH":
+      return state.D ? { ...state, D: { ...state.D, ...action.patch } } : state;
     case "SET_METRIC":
       return { ...state, metric: action.metric };
     case "PERIOD_PENDING":
@@ -127,6 +135,18 @@ function safe<T>(p: Promise<T>): Promise<T | null> {
   return p.catch(() => null);
 }
 
+async function fetchSnapshot(u: string): Promise<AppData> {
+  const [portfolio, clearing, spot, spotCtx, vaults, staking] = await Promise.all([
+    info<PortfolioEntry[]>({ type: "portfolio", user: u }),
+    info<ClearinghouseState>({ type: "clearinghouseState", user: u }),
+    safe(info<SpotClearinghouseState>({ type: "spotClearinghouseState", user: u })),
+    safe(info<SpotCtx>({ type: "spotMetaAndAssetCtxs" })),
+    safe(info<VaultEquity[]>({ type: "userVaultEquities", user: u })),
+    safe(info<DelegatorSummary>({ type: "delegatorSummary", user: u })),
+  ]);
+  return { pmap: Object.fromEntries(portfolio), clearing, spot, spotCtx, vaults, staking };
+}
+
 export default function Dashboard() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [addrInput, setAddrInput] = useState(DEFAULT_ADDR);
@@ -134,6 +154,7 @@ export default function Dashboard() {
 
   const winCacheRef = useRef<Map<string, WinData>>(new Map());
   const lastRefreshRef = useRef(0);
+  const snapshotInFlightRef = useRef(false);
   const toastKeyRef = useRef<string | null>(null);
   const stateRef = useRef(state);
 
@@ -172,15 +193,7 @@ export default function Dashboard() {
       dispatch({ type: "LOAD_START", soft });
       try {
         if (!/^0x[a-fA-F0-9]{40}$/.test(u)) throw new Error("that doesn't look like an EVM address");
-        const [portfolio, clearing, spot, spotCtx, vaults, staking] = await Promise.all([
-          info<PortfolioEntry[]>({ type: "portfolio", user: u }),
-          info<ClearinghouseState>({ type: "clearinghouseState", user: u }),
-          safe(info<SpotClearinghouseState>({ type: "spotClearinghouseState", user: u })),
-          safe(info<SpotCtx>({ type: "spotMetaAndAssetCtxs" })),
-          safe(info<VaultEquity[]>({ type: "userVaultEquities", user: u })),
-          safe(info<DelegatorSummary>({ type: "delegatorSummary", user: u })),
-        ]);
-        const newD: AppData = { pmap: Object.fromEntries(portfolio), clearing, spot, spotCtx, vaults, staking };
+        const newD = await fetchSnapshot(u);
         winCacheRef.current.clear();
         const newPeriod: Period = cur.period === "custom" ? "month" : cur.period;
         const winData = await computeWinData(newD, u, newPeriod, null, winCacheRef.current);
@@ -199,11 +212,27 @@ export default function Dashboard() {
     [hideToast, showToast]
   );
 
+  const refreshSnapshot = useCallback(async () => {
+    const cur = stateRef.current;
+    if (!cur.currentUser || !cur.D || cur.loading || snapshotInFlightRef.current) return;
+    snapshotInFlightRef.current = true;
+    try {
+      const newD = await fetchSnapshot(cur.currentUser);
+      dispatch({ type: "SNAPSHOT_SUCCESS", D: newD });
+      lastRefreshRef.current = Date.now();
+    } catch {
+    } finally {
+      snapshotInFlightRef.current = false;
+    }
+  }, []);
+
   const loadRef = useRef(load);
+  const refreshSnapshotRef = useRef(refreshSnapshot);
 
   useEffect(() => {
     stateRef.current = state;
     loadRef.current = load;
+    refreshSnapshotRef.current = refreshSnapshot;
   });
 
   useEffect(() => {
@@ -234,6 +263,30 @@ export default function Dashboard() {
       window.removeEventListener("pageshow", onPageShow);
     };
   }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") refreshSnapshotRef.current();
+    }, SNAPSHOT_POLL_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const u = state.currentUser;
+    if (!u) return;
+    const offClearing = hlSocket.subscribe({ type: "clearinghouseState", user: u }, (data) => {
+      const clearing = (data as { clearinghouseState?: ClearinghouseState })?.clearinghouseState;
+      if (clearing) dispatch({ type: "LIVE_PATCH", patch: { clearing } });
+    });
+    const offSpot = hlSocket.subscribe({ type: "spotState", user: u }, (data) => {
+      const spot = (data as { spotState?: SpotClearinghouseState })?.spotState;
+      if (spot) dispatch({ type: "LIVE_PATCH", patch: { spot } });
+    });
+    return () => {
+      offClearing();
+      offSpot();
+    };
+  }, [state.currentUser]);
 
   const setPeriod = useCallback(async (p: Period, targetRange: Range | null) => {
     const cur = stateRef.current;

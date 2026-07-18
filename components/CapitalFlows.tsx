@@ -1,6 +1,7 @@
 import { cls, fdate, moneyFormatOptions, usd } from "@/lib/format";
-import { NumberValue, Widget } from "@heroui-pro/react";
+import { Widget } from "@heroui-pro/react";
 import { Separator } from "@heroui/react";
+import NumberFlow from "@number-flow/react";
 
 type RecentFlow = { t: number; kind: string; amt: number; fee?: number; to?: string };
 
@@ -29,20 +30,20 @@ export default function CapitalFlows({
         <div className="flex flex-wrap gap-5">
           <div>
             <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">In</div>
-            <NumberValue className="mt-1 font-mono text-lg font-bold" value={dep} {...moneyFormatOptions(dep)} />
+            <NumberFlow className="mt-1 font-mono text-lg font-bold" format={moneyFormatOptions(dep)} value={dep} />
             <div className="text-xs text-muted">{depN} deposits &amp; transfers in</div>
           </div>
           <div>
             <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Out</div>
-            <NumberValue className="mt-1 font-mono text-lg font-bold" value={wd} {...moneyFormatOptions(wd)} />
+            <NumberFlow className="mt-1 font-mono text-lg font-bold" format={moneyFormatOptions(wd)} value={wd} />
             <div className="text-xs text-muted">{wdN} withdrawals &amp; transfers out</div>
           </div>
           <div>
             <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Net flow</div>
-            <NumberValue
+            <NumberFlow
               className={`mt-1 font-mono text-lg font-bold ${cls(dep - wd)}`}
+              format={moneyFormatOptions(dep - wd, true)}
               value={dep - wd}
-              {...moneyFormatOptions(dep - wd, true)}
             />
             <div className="text-xs text-muted">in &minus; out</div>
           </div>

@@ -289,7 +289,6 @@ function TrailSummary({ state }: { state: TenantState | null }) {
         {state.stop ? (
           <span className="font-mono">
             <NumberFlow format={moneyFormatOptions(state.stop.triggerPx)} value={state.stop.triggerPx} />
-            <span className="ml-1.5 text-xs text-muted">#{state.stop.orderId}</span>
           </span>
         ) : (
           <span className="text-muted">None</span>

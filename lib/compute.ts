@@ -8,6 +8,7 @@ import type {
   LedgerEvent,
   Metric,
   Period,
+  Position,
   Range,
 } from "./types";
 
@@ -142,6 +143,17 @@ export function accountBreakdown(D: AppData) {
     ? ((+st.delegated! || 0) + (+st.undelegated! || 0) + (+st.totalPendingWithdrawal! || 0)) * hype
     : 0;
   return { perp, spot, vault, staked, total: perp + spot + vault + staked };
+}
+
+export function livePnl(p: Position, mark: number | undefined): Position {
+  const szi = +p.szi;
+  const entry = +p.entryPx;
+  if (!mark || !isFinite(mark) || !szi || !entry) return p;
+  const pnl = szi * (mark - entry);
+  const lev = p.leverage?.value;
+  const margin = (Math.abs(szi) * entry) / (lev && lev > 0 ? lev : 1);
+  const roe = margin ? pnl / margin : +p.returnOnEquity;
+  return { ...p, unrealizedPnl: String(pnl), returnOnEquity: String(roe) };
 }
 
 export function flowOf(ev: LedgerEvent | undefined, currentUser: string | null): CapitalFlow | null {

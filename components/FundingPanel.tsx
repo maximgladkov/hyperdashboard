@@ -1,4 +1,5 @@
-import { NumberValue, Widget } from "@heroui-pro/react";
+import { Widget } from "@heroui-pro/react";
+import NumberFlow from "@number-flow/react";
 import { cls, moneyFormatOptions } from "@/lib/format";
 
 export default function FundingPanel({
@@ -17,7 +18,7 @@ export default function FundingPanel({
         <Widget.Description>{wLbl}</Widget.Description>
       </Widget.Header>
       <Widget.Content>
-        <NumberValue className={`text-2xl font-bold ${cls(fundTot)}`} value={fundTot} {...moneyFormatOptions(fundTot, true)} />
+        <NumberFlow className={`text-2xl font-bold ${cls(fundTot)}`} format={moneyFormatOptions(fundTot, true)} value={fundTot} />
         <div className="mt-1 text-xs text-muted">{fundingCount} funding payments &middot; net paid/received</div>
       </Widget.Content>
     </Widget>
