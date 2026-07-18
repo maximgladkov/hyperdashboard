@@ -365,7 +365,7 @@ export default function Dashboard() {
           onPeriodChange={handlePeriodClick}
           onRangeChange={handleRangeChange}
         />
-        <div className="order-1 flex flex-col gap-4 lg:order-2 lg:w-[320px] lg:shrink-0">
+        <div className="order-1 flex flex-col gap-4 lg:order-2 lg:w-[400px] lg:shrink-0">
           <TrailWidget key={state.currentUser} address={state.currentUser!} />
           <Positions positions={positions} />
           <FundingPanel fundTot={fundTot} fundingCount={activeFunding.length} wLbl={wLbl} />
