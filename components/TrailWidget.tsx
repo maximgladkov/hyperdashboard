@@ -3,9 +3,9 @@
 import { moneyFormatOptions } from "@/lib/format";
 import { info } from "@/lib/hyperliquid";
 import type { TenantState, TrailType } from "@/lib/trail";
-import { EmptyState, NumberStepper, Segment, Widget } from "@heroui-pro/react";
+import { EmptyState, NumberStepper, Widget } from "@heroui-pro/react";
 import { Chip, Separator, Spinner, Switch } from "@heroui/react";
-import NumberFlow from "@number-flow/react";
+import NumberFlow, { Format } from "@number-flow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Key } from "react-aria-components";
 
@@ -16,7 +16,7 @@ const ABS_MIN = 100;
 const ABS_MAX = 1_000_000;
 const ABS_STEP = 100;
 const WRITE_DEBOUNCE_MS = 450;
-const ABS_FORMAT = { style: "currency", currency: "USD", maximumFractionDigits: 0 } as const;
+const ABS_FORMAT = { style: "currency", currency: "USD", maximumFractionDigits: 0, currencyDisplay: "narrowSymbol" } as Format;
 
 const roundToHundred = (n: number) => Math.round(n / ABS_STEP) * ABS_STEP;
 
@@ -175,62 +175,65 @@ export default function TrailWidget({ address }: { address: string }) {
 
         {managed === true && (
           <div className="flex flex-col gap-4">
+            <Switch isSelected={localEnabled} onChange={handleEnabledChange} className="flex flex-row items-center justify-between gap-2">
+              Trailing enabled
+              <Switch.Content>
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+              </Switch.Content>
+            </Switch>
+
+            <Separator />
+
             <div className="flex items-center justify-between gap-3">
-              <Switch isSelected={localEnabled} onChange={handleEnabledChange}>
-                <Switch.Content>
-                  <Switch.Control>
-                    <Switch.Thumb />
-                  </Switch.Control>
-                  Trailing enabled
-                </Switch.Content>
-              </Switch>
+              <div className="flex flex-col gap-4">
+                {/* <Segment selectedKey={localType} size="sm" onSelectionChange={handleUnitChange}>
+                <Segment.Item id="pct">%</Segment.Item>
+                <Segment.Item id="abs">$</Segment.Item
+                >
+              </Segment> */}
+                {localType === "pct" ? (
+                  <NumberStepper
+                    aria-label="Trail distance percent"
+                    formatOptions={{ style: "unit", unit: "percent", maximumFractionDigits: 1 }}
+                    maxValue={PCT_MAX}
+                    minValue={PCT_MIN}
+                    size="sm"
+                    step={0.001}
+                    value={localPct}
+                    onChange={handlePctChange}
+                  >
+                    <NumberStepper.Group>
+                      <NumberStepper.DecrementButton />
+                      <NumberStepper.Value />
+                      <NumberStepper.IncrementButton />
+                    </NumberStepper.Group>
+                  </NumberStepper>
+                ) : (
+                  <NumberStepper
+                    aria-label="Trail distance amount"
+                    formatOptions={ABS_FORMAT}
+                    maxValue={ABS_MAX}
+                    minValue={ABS_MIN}
+                    step={ABS_STEP}
+                    value={localAbs}
+                    onChange={handleAbsChange}
+                  >
+                    <NumberStepper.Group>
+                      <NumberStepper.DecrementButton />
+                      <NumberStepper.Value className="mx-3" />
+                      <NumberStepper.IncrementButton />
+                    </NumberStepper.Group>
+                  </NumberStepper>
+                )}
+              </div>
+
               {priceToShow !== null && (
                 <div className="text-right">
                   <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Mark price</div>
-                  <NumberFlow className="font-mono text-lg font-bold" format={moneyFormatOptions(priceToShow)} value={priceToShow} />
+                  <NumberFlow className="font-mono text-xl font-bold" format={moneyFormatOptions(priceToShow)} value={priceToShow} />
                 </div>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Segment selectedKey={localType} size="sm" onSelectionChange={handleUnitChange}>
-                <Segment.Item id="pct">%</Segment.Item>
-                <Segment.Item id="abs">$</Segment.Item>
-              </Segment>
-              {localType === "pct" ? (
-                <NumberStepper
-                  aria-label="Trail distance percent"
-                  formatOptions={{ style: "unit", unit: "percent", maximumFractionDigits: 1 }}
-                  maxValue={PCT_MAX}
-                  minValue={PCT_MIN}
-                  size="sm"
-                  step={0.001}
-                  value={localPct}
-                  onChange={handlePctChange}
-                >
-                  <NumberStepper.Group>
-                    <NumberStepper.DecrementButton />
-                    <NumberStepper.Value />
-                    <NumberStepper.IncrementButton />
-                  </NumberStepper.Group>
-                </NumberStepper>
-              ) : (
-                <NumberStepper
-                  aria-label="Trail distance amount"
-                  formatOptions={ABS_FORMAT}
-                  maxValue={ABS_MAX}
-                  minValue={ABS_MIN}
-                  size="sm"
-                  step={ABS_STEP}
-                  value={localAbs}
-                  onChange={handleAbsChange}
-                >
-                  <NumberStepper.Group>
-                    <NumberStepper.DecrementButton />
-                    <NumberStepper.Value className="mx-2" />
-                    <NumberStepper.IncrementButton />
-                  </NumberStepper.Group>
-                </NumberStepper>
               )}
             </div>
 
@@ -295,11 +298,8 @@ function TrailSummary({ state }: { state: TenantState | null }) {
 
       <Separator />
 
-      <div>
-        <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Last action</div>
-        <div className="mt-1 text-sm">{state.lastAction || "\u2014"}</div>
-      </div>
-
+      <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase mt-1">Last action</div>
+      <div className="text-sm">{state.lastAction || "\u2014"}</div>
       <div className="text-xs text-muted">Updated {new Date(state.updatedAt).toLocaleTimeString()}</div>
     </div>
   );

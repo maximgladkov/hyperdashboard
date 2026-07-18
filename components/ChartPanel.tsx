@@ -12,10 +12,10 @@ import type { Key } from "react-aria-components";
 type Point = { t: number; v: number };
 
 const PERIOD_DESCRIPTIONS: Record<Exclude<Period, "custom">, string> = {
-  day: "Last 24 hours",
-  week: "Last 7 days",
-  month: "Last 30 days",
-  allTime: "All time",
+  day: "24H",
+  week: "7D",
+  month: "30D",
+  allTime: "All",
 };
 
 function msToDateValue(ms: number): DateValue {
@@ -47,16 +47,16 @@ export function ChartControls({
     period === "custom" && range ? { start: msToDateValue(range.start), end: msToDateValue(range.end) } : null;
 
   return (
-    <div className={`flex flex-wrap items-center justify-end gap-3${className ? ` ${className}` : ""}`}>
-      <Segment
-        selectedKey={metric}
-        size="sm"
-        onSelectionChange={(k: Key) => onMetricChange(k as Metric)}
-      >
-        <Segment.Item id="pnl">PnL</Segment.Item>
-        <Segment.Item id="equity">Equity</Segment.Item>
-      </Segment>
+    <div className={`flex flex-wrap items-center justify-center gap-3 lg:justify-end${className ? ` ${className}` : ""}`}>
       <div className="flex flex-wrap items-center gap-2">
+        <Segment
+          selectedKey={metric}
+          size="sm"
+          onSelectionChange={(k: Key) => onMetricChange(k as Metric)}
+        >
+          <Segment.Item id="pnl">PnL</Segment.Item>
+          <Segment.Item id="equity">Equity</Segment.Item>
+        </Segment>
         <Segment
           disallowEmptySelection={false}
           selectedKey={period}
@@ -69,53 +69,53 @@ export function ChartControls({
             </Segment.Item>
           ))}
         </Segment>
-        <div className="flex items-center gap-1.5">
-          <DateRangePicker
-            aria-label="Custom date range"
-            isDisabled={pendingPeriod === "custom"}
-            value={rangeValue}
-            onChange={(v) => {
-              if (!v) return;
-              onRangeChange({ start: Date.parse(v.start.toString()), end: Date.parse(v.end.toString()) + 86399999 });
-            }}
-          >
-            <DateField.Group variant="secondary">
-              <DateField.InputContainer>
-                <DateField.Input slot="start">{(segment) => <DateField.Segment segment={segment} />}</DateField.Input>
-                <DateRangePicker.RangeSeparator />
-                <DateField.Input slot="end">{(segment) => <DateField.Segment segment={segment} />}</DateField.Input>
-              </DateField.InputContainer>
-              <DateField.Suffix>
-                <DateRangePicker.Trigger>
-                  <DateRangePicker.TriggerIndicator />
-                </DateRangePicker.Trigger>
-              </DateField.Suffix>
-            </DateField.Group>
-            <DateRangePicker.Popover>
-              <RangeCalendar aria-label="Custom date range">
-                <RangeCalendar.Header>
-                  <RangeCalendar.YearPickerTrigger>
-                    <RangeCalendar.YearPickerTriggerHeading />
-                    <RangeCalendar.YearPickerTriggerIndicator />
-                  </RangeCalendar.YearPickerTrigger>
-                  <RangeCalendar.NavButton slot="previous" />
-                  <RangeCalendar.NavButton slot="next" />
-                </RangeCalendar.Header>
-                <RangeCalendar.Grid>
-                  <RangeCalendar.GridHeader>
-                    {(day) => <RangeCalendar.HeaderCell>{day}</RangeCalendar.HeaderCell>}
-                  </RangeCalendar.GridHeader>
-                  <RangeCalendar.GridBody>{(date) => <RangeCalendar.Cell date={date} />}</RangeCalendar.GridBody>
-                </RangeCalendar.Grid>
-                <RangeCalendar.YearPickerGrid>
-                  <RangeCalendar.YearPickerGridBody>
-                    {({ year }) => <RangeCalendar.YearPickerCell year={year} />}
-                  </RangeCalendar.YearPickerGridBody>
-                </RangeCalendar.YearPickerGrid>
-              </RangeCalendar>
-            </DateRangePicker.Popover>
-          </DateRangePicker>
-        </div>
+      </div>
+      <div className="flex items-center gap-1.5">
+        <DateRangePicker
+          aria-label="Custom date range"
+          isDisabled={pendingPeriod === "custom"}
+          value={rangeValue}
+          onChange={(v) => {
+            if (!v) return;
+            onRangeChange({ start: Date.parse(v.start.toString()), end: Date.parse(v.end.toString()) + 86399999 });
+          }}
+        >
+          <DateField.Group variant="secondary">
+            <DateField.InputContainer>
+              <DateField.Input slot="start">{(segment) => <DateField.Segment segment={segment} />}</DateField.Input>
+              <DateRangePicker.RangeSeparator />
+              <DateField.Input slot="end">{(segment) => <DateField.Segment segment={segment} />}</DateField.Input>
+            </DateField.InputContainer>
+            <DateField.Suffix>
+              <DateRangePicker.Trigger>
+                <DateRangePicker.TriggerIndicator />
+              </DateRangePicker.Trigger>
+            </DateField.Suffix>
+          </DateField.Group>
+          <DateRangePicker.Popover>
+            <RangeCalendar aria-label="Custom date range">
+              <RangeCalendar.Header>
+                <RangeCalendar.YearPickerTrigger>
+                  <RangeCalendar.YearPickerTriggerHeading />
+                  <RangeCalendar.YearPickerTriggerIndicator />
+                </RangeCalendar.YearPickerTrigger>
+                <RangeCalendar.NavButton slot="previous" />
+                <RangeCalendar.NavButton slot="next" />
+              </RangeCalendar.Header>
+              <RangeCalendar.Grid>
+                <RangeCalendar.GridHeader>
+                  {(day) => <RangeCalendar.HeaderCell>{day}</RangeCalendar.HeaderCell>}
+                </RangeCalendar.GridHeader>
+                <RangeCalendar.GridBody>{(date) => <RangeCalendar.Cell date={date} />}</RangeCalendar.GridBody>
+              </RangeCalendar.Grid>
+              <RangeCalendar.YearPickerGrid>
+                <RangeCalendar.YearPickerGridBody>
+                  {({ year }) => <RangeCalendar.YearPickerCell year={year} />}
+                </RangeCalendar.YearPickerGridBody>
+              </RangeCalendar.YearPickerGrid>
+            </RangeCalendar>
+          </DateRangePicker.Popover>
+        </DateRangePicker>
       </div>
     </div>
   );

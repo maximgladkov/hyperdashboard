@@ -1,7 +1,7 @@
-import { Table } from "@heroui/react";
-import { EmptyState, Widget } from "@heroui-pro/react";
 import { cls, usd } from "@/lib/format";
 import type { CoinAgg } from "@/lib/types";
+import { EmptyState, Widget } from "@heroui-pro/react";
+import { Table } from "@heroui/react";
 
 export default function MarketTable({
   coins,
@@ -21,7 +21,7 @@ export default function MarketTable({
       <Widget.Header>
         <Widget.Title>Realized PnL by market</Widget.Title>
         <Widget.Description>
-          {nTrades} fills &middot; {wLbl}
+          {wLbl}
         </Widget.Description>
       </Widget.Header>
       <Widget.Content className={coins.length ? "p-0" : undefined}>
@@ -29,7 +29,7 @@ export default function MarketTable({
           <Table variant="secondary">
             <Table.ScrollContainer>
               <Table.Content aria-label="Realized PnL by market" className="min-w-[520px] font-mono text-sm">
-                <Table.Header>
+                <Table.Header className="[&>tr>th]:bg-transparent!">
                   <Table.Column isRowHeader>Market</Table.Column>
                   <Table.Column className="text-right">Realized</Table.Column>
                   <Table.Column className="text-right">Fees</Table.Column>
