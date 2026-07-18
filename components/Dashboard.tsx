@@ -23,7 +23,6 @@ import {
   seriesFor,
   winLabel,
 } from "@/lib/compute";
-import { usd } from "@/lib/format";
 import { hlSocket } from "@/lib/hlws";
 import { fetchRange, info } from "@/lib/hyperliquid";
 import { usePositionStep, usePriceStep } from "@/lib/tradeSteps";
@@ -40,7 +39,7 @@ import type {
   VaultEquity,
   WinData,
 } from "@/lib/types";
-import { NumberStepper } from "@heroui-pro/react";
+import { StepperField } from "@/components/StepperField";
 import { Alert, Button, Dropdown, Label, Modal, SearchField, Spinner, Toast, toast, useOverlayState } from "@heroui/react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
@@ -588,27 +587,37 @@ function Header({
               <div className="flex flex-col gap-4">
                 <div className="flex flex-col gap-2">
                   <span className="text-sm text-muted">Position step</span>
-                  <NumberStepper className="w-full" aria-label="Position step" minValue={0.001} step={0.001} value={positionStep} onChange={setPositionStep}>
-                    <NumberStepper.Group className="w-full">
-                      <NumberStepper.DecrementButton />
-                      <NumberStepper.Value className="w-full">
-                        {({ value }) => <span className="font-mono text-sm tabular-nums">{new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value)} BTC</span>}
-                      </NumberStepper.Value>
-                      <NumberStepper.IncrementButton />
-                    </NumberStepper.Group>
-                  </NumberStepper>
+                  <StepperField
+                    aria-label="Position step"
+                    className="w-full"
+                    decimalScale={4}
+                    groupClassName="w-full"
+                    label="Position step"
+                    minValue={0.001}
+                    step={0.001}
+                    suffix=" BTC"
+                    value={positionStep}
+                    valueClassName="flex-1 text-center text-sm"
+                    onChange={setPositionStep}
+                  />
                   <span className="text-xs text-muted">Increment for the Trade Wheel position-size stepper.</span>
                 </div>
 
                 <div className="flex flex-col gap-2">
                   <span className="text-sm text-muted">Pricing step ($)</span>
-                  <NumberStepper className="w-full" aria-label="Pricing step" minValue={10} step={10} value={priceStep} onChange={setPriceStep}>
-                    <NumberStepper.Group className="w-full">
-                      <NumberStepper.DecrementButton />
-                      <NumberStepper.Value className="w-full">{({ value }) => <span className="font-mono text-sm tabular-nums">{usd(value)}</span>}</NumberStepper.Value>
-                      <NumberStepper.IncrementButton />
-                    </NumberStepper.Group>
-                  </NumberStepper>
+                  <StepperField
+                    aria-label="Pricing step"
+                    className="w-full"
+                    group
+                    groupClassName="w-full"
+                    label="Pricing step ($)"
+                    minValue={10}
+                    prefix="$"
+                    step={10}
+                    value={priceStep}
+                    valueClassName="flex-1 text-center text-sm"
+                    onChange={setPriceStep}
+                  />
                   <span className="text-xs text-muted">Shared by the Trade Wheel and the trailing stop distance.</span>
                 </div>
               </div>

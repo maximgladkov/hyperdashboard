@@ -1,12 +1,13 @@
 "use client";
 
+import { StepperField } from "@/components/StepperField";
 import { moneyFormatOptions } from "@/lib/format";
 import { info } from "@/lib/hyperliquid";
 import { usePriceStep } from "@/lib/tradeSteps";
 import type { TenantState, TrailType } from "@/lib/trail";
-import { EmptyState, NumberStepper, Widget } from "@heroui-pro/react";
+import { EmptyState, Widget } from "@heroui-pro/react";
 import { Chip, Separator, Spinner, Switch } from "@heroui/react";
-import NumberFlow, { Format } from "@number-flow/react";
+import NumberFlow from "@number-flow/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Key } from "react-aria-components";
 
@@ -16,7 +17,6 @@ const PCT_MAX = 90;
 const ABS_MIN = 50;
 const ABS_MAX = 1_000_000;
 const WRITE_DEBOUNCE_MS = 450;
-const ABS_FORMAT = { style: "currency", currency: "USD", maximumFractionDigits: 0, currencyDisplay: "narrowSymbol" } as Format;
 
 const roundToStep = (n: number, step: number) => Math.round(n / step) * step;
 
@@ -50,8 +50,8 @@ export default function TrailWidget({ address }: { address: string }) {
   const [localPct, setLocalPct] = useState(2);
   const [localAbs, setLocalAbs] = useState(100);
   const [localEnabled, setLocalEnabled] = useState(true);
-  const seededRef = useRef(false);
   const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingWriteRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,9 +67,8 @@ export default function TrailWidget({ address }: { address: string }) {
         setManaged(res.managed);
         if (res.managed) {
           setState(res.state);
-          if (!seededRef.current && res.state?.trail) {
-            seededRef.current = true;
-            const { trail } = res.state;
+          const trail = res.state?.trail;
+          if (trail && !pendingWriteRef.current) {
             setLocalType(trail.type);
             setLocalEnabled(trail.enabled);
             if (trail.type === "pct") setLocalPct(+(trail.value * 100).toFixed(2));
@@ -110,7 +109,15 @@ export default function TrailWidget({ address }: { address: string }) {
   const scheduleWrite = useCallback(
     (effectiveType: TrailType, fields: { type?: TrailType; value?: number; enabled?: boolean }, immediate = false) => {
       if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
-      const run = () => writeTrailConfig(address, effectiveType, fields);
+      pendingWriteRef.current = true;
+      const run = async () => {
+        writeTimerRef.current = null;
+        try {
+          await writeTrailConfig(address, effectiveType, fields);
+        } finally {
+          pendingWriteRef.current = false;
+        }
+      };
       if (immediate) run();
       else writeTimerRef.current = setTimeout(run, WRITE_DEBOUNCE_MS);
     },
@@ -195,38 +202,30 @@ export default function TrailWidget({ address }: { address: string }) {
                 >
               </Segment> */}
                 {localType === "pct" ? (
-                  <NumberStepper
+                  <StepperField
                     aria-label="Trail distance percent"
-                    formatOptions={{ style: "unit", unit: "percent", maximumFractionDigits: 1 }}
+                    label="Trail distance"
                     maxValue={PCT_MAX}
                     minValue={PCT_MIN}
                     size="sm"
                     step={0.001}
+                    suffix="%"
                     value={localPct}
                     onChange={handlePctChange}
-                  >
-                    <NumberStepper.Group>
-                      <NumberStepper.DecrementButton />
-                      <NumberStepper.Value />
-                      <NumberStepper.IncrementButton />
-                    </NumberStepper.Group>
-                  </NumberStepper>
+                  />
                 ) : (
-                  <NumberStepper
+                  <StepperField
                     aria-label="Trail distance amount"
-                    formatOptions={ABS_FORMAT}
+                    group
+                    label="Trail distance"
                     maxValue={ABS_MAX}
                     minValue={ABS_MIN}
+                    prefix="$"
                     step={priceStep}
                     value={localAbs}
+                    valueClassName="mx-3 text-sm"
                     onChange={handleAbsChange}
-                  >
-                    <NumberStepper.Group>
-                      <NumberStepper.DecrementButton />
-                      <NumberStepper.Value className="mx-3" />
-                      <NumberStepper.IncrementButton />
-                    </NumberStepper.Group>
-                  </NumberStepper>
+                  />
                 )}
               </div>
 

@@ -8,8 +8,9 @@ import { cancelOrder, placeOrder } from "@/lib/trade";
 import { usePositionStep, usePriceStep } from "@/lib/tradeSteps";
 import type { TenantState } from "@/lib/trail";
 import type { OpenOrder } from "@/lib/types";
+import { StepperField } from "@/components/StepperField";
 import { NumberFlowInput } from "@daformat/react-number-flow-input";
-import { NumberStepper, Widget } from "@heroui-pro/react";
+import { Widget } from "@heroui-pro/react";
 import type { ButtonProps } from "@heroui/react";
 import { Button, ButtonGroup, toast } from "@heroui/react";
 import NumberFlow from "@number-flow/react";
@@ -31,11 +32,6 @@ function formatTick(v: number, decimals: number): string {
 
 function formatSize(n: number): string {
   return n.toFixed(4).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
-}
-
-function decimalsForStep(step: number): number {
-  if (!step || step >= 1) return 0;
-  return Math.max(0, Math.round(Math.log10(1 / step)));
 }
 
 function formatCurrencyInput(raw: string): string {
@@ -298,7 +294,6 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
   const markOffset = mark != null && value != null ? ((value - mark) / step) * PIXELS_PER_STEP : 0;
   const entryOffset = entryPx != null && value != null ? ((value - entryPx) / step) * PIXELS_PER_STEP : null;
   const stopOffset = stopPx != null && value != null ? ((value - stopPx) / step) * PIXELS_PER_STEP : null;
-  const sizeDecimals = decimalsForStep(sizeStep);
 
   const orderLines = useMemo(() => {
     if (value == null) return [];
@@ -452,19 +447,16 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
           </div>
 
           <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-2" onPointerDown={(e) => e.stopPropagation()}>
-            <NumberStepper aria-label="Position size" minValue={sizeStep} step={sizeStep} value={size} onChange={setSize}>
-              <NumberStepper.Group>
-                <NumberStepper.DecrementButton />
-                <NumberStepper.Value className="mx-2">
-                  {({ value }) => (
-                    <span className="font-mono text-xs tabular-nums">
-                      {new Intl.NumberFormat("en-US", { maximumFractionDigits: 4 }).format(value)} {coin}
-                    </span>
-                  )}
-                </NumberStepper.Value>
-                <NumberStepper.IncrementButton />
-              </NumberStepper.Group>
-            </NumberStepper>
+            <StepperField
+              aria-label="Position size"
+              label={`Position size · ${coin}`}
+              minValue={sizeStep}
+              step={sizeStep}
+              suffix={` ${coin}`}
+              value={size}
+              valueClassName="text-xs"
+              onChange={setSize}
+            />
             {positionSize != null && positionSide != null && (
               <ActionButton
                 aria-label={reduceOrder ? "Move reduce-only order to selected price" : "Reduce-only order matching position size"}
