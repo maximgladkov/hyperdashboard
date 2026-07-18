@@ -15,7 +15,6 @@ type Status = "checking" | "unsupported" | "ios-needs-install" | "needs-permissi
 
 export default function NotificationPrompt({ address }: { address: string }) {
   const [status, setStatus] = useState<Status>("checking");
-  const [dismissed, setDismissed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [subscribing, setSubscribing] = useState(false);
 
@@ -82,7 +81,7 @@ export default function NotificationPrompt({ address }: { address: string }) {
     }
   };
 
-  if (dismissed || status === "checking" || status === "unsupported" || status === "subscribed") {
+  if (status === "checking" || status === "unsupported" || status === "subscribed") {
     return null;
   }
 
@@ -96,9 +95,6 @@ export default function NotificationPrompt({ address }: { address: string }) {
             Add this app to your home screen (tap Share, then &quot;Add to Home Screen&quot;) to enable position-close alerts.
           </Alert.Description>
         </Alert.Content>
-        <Button isIconOnly variant="ghost" size="sm" aria-label="Dismiss" onPress={() => setDismissed(true)}>
-          &times;
-        </Button>
       </Alert>
     );
   }
@@ -113,9 +109,6 @@ export default function NotificationPrompt({ address }: { address: string }) {
             Enable notifications for this app in your device settings to get alerted when a position closes.
           </Alert.Description>
         </Alert.Content>
-        <Button isIconOnly variant="ghost" size="sm" aria-label="Dismiss" onPress={() => setDismissed(true)}>
-          &times;
-        </Button>
       </Alert>
     );
   }
@@ -126,15 +119,13 @@ export default function NotificationPrompt({ address }: { address: string }) {
       <Alert.Content>
         <Alert.Title>Get notified when a position closes</Alert.Title>
         <Alert.Description>{error ?? "Enable push notifications to hear about it the moment it happens."}</Alert.Description>
-      </Alert.Content>
-      <div className="flex items-center gap-2">
-        <Button variant="primary" size="sm" isPending={subscribing} onPress={handleEnable}>
+        <Button className="mt-2 sm:hidden" size="sm" variant="primary" isPending={subscribing} onPress={handleEnable}>
           Enable notifications
         </Button>
-        <Button isIconOnly variant="ghost" size="sm" aria-label="Dismiss" onPress={() => setDismissed(true)}>
-          &times;
-        </Button>
-      </div>
+      </Alert.Content>
+      <Button className="hidden sm:block" size="sm" variant="primary" isPending={subscribing} onPress={handleEnable}>
+        Enable notifications
+      </Button>
     </Alert>
   );
 }
