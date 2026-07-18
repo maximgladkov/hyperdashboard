@@ -2,8 +2,8 @@
 
 import { StepperField } from "@/components/StepperField";
 import { moneyFormatOptions } from "@/lib/format";
-import { info } from "@/lib/hyperliquid";
 import { usePriceStep } from "@/lib/tradeSteps";
+import { useMarkPrice } from "@/lib/useMarkPrice";
 import type { TenantState, TrailType } from "@/lib/trail";
 import { EmptyState, Widget } from "@heroui-pro/react";
 import { Chip, Separator, Spinner, Switch } from "@heroui/react";
@@ -43,7 +43,6 @@ export default function TrailWidget({ address }: { address: string }) {
   const [managed, setManaged] = useState<boolean | null>(null);
   const [state, setState] = useState<TenantState | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [livePrice, setLivePrice] = useState<number | null>(null);
   const [priceStep] = usePriceStep();
   const [localType, setLocalType] = useState<TrailType>("pct");
   const [localPct, setLocalPct] = useState(2);
@@ -111,24 +110,7 @@ export default function TrailWidget({ address }: { address: string }) {
     };
   }, [poll]);
 
-  useEffect(() => {
-    if (!state?.coin) return;
-    let cancelled = false;
-    const pollPrice = async () => {
-      try {
-        const mids = await info<Record<string, string>>({ type: "allMids" });
-        if (cancelled) return;
-        const mid = +mids[state.coin];
-        if (mid) setLivePrice(mid);
-      } catch { }
-    };
-    pollPrice();
-    const id = setInterval(pollPrice, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [state?.coin]);
+  const livePrice = useMarkPrice(state?.coin);
 
   const scheduleWrite = useCallback(
     (effectiveType: TrailType, fields: { type?: TrailType; value?: number; enabled?: boolean }, immediate = false) => {

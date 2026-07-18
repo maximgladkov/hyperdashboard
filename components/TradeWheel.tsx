@@ -1,11 +1,11 @@
 "use client";
 
 import { moneyFormatOptions, usd } from "@/lib/format";
-import { hlSocket } from "@/lib/hlws";
 import { fetchOpenOrders } from "@/lib/hyperliquid";
 import { orderLabel, orderPrice } from "@/lib/orders";
 import { cancelOrder, placeOrder } from "@/lib/trade";
 import { usePositionStep, usePriceStep } from "@/lib/tradeSteps";
+import { useMarkPrice } from "@/lib/useMarkPrice";
 import type { TenantState } from "@/lib/trail";
 import type { OpenOrder } from "@/lib/types";
 import { StepperField } from "@/components/StepperField";
@@ -17,7 +17,6 @@ import NumberFlow from "@number-flow/react";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const THROTTLE_MS = 500;
 const POSITION_POLL_MS = 3000;
 const ORDERS_POLL_MS = 5000;
 const DOUBLE_TAP_MS = 300;
@@ -72,7 +71,7 @@ async function fetchTrailState(address: string): Promise<TrailStateResponse> {
 type DragState = { startY: number; startValue: number };
 
 export default function TradeWheel({ coin, initialPrice, address }: { coin: string; initialPrice?: number; address?: string }) {
-  const [mark, setMark] = useState<number | null>(initialPrice ?? null);
+  const mark = useMarkPrice(coin, initialPrice ?? null);
   const [heldValue, setHeldValue] = useState<number | null>(initialPrice ?? null);
   const [following, setFollowing] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
@@ -92,28 +91,6 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
 
   const dragRef = useRef<DragState | null>(null);
   const lastTapRef = useRef(0);
-
-  useEffect(() => {
-    let latest: number | null = null;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const flush = () => {
-      timer = null;
-      if (latest != null) setMark(latest);
-    };
-    const off = hlSocket.subscribe({ type: "allMids" }, (data) => {
-      const mids = (data as { mids?: Record<string, string> })?.mids;
-      const raw = mids?.[coin];
-      if (raw == null) return;
-      const n = +raw;
-      if (!n) return;
-      latest = n;
-      if (!timer) timer = setTimeout(flush, THROTTLE_MS);
-    });
-    return () => {
-      off();
-      if (timer) clearTimeout(timer);
-    };
-  }, [coin]);
 
   useEffect(() => {
     if (!address) {

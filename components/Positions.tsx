@@ -3,53 +3,16 @@
 import { Button, Chip, toast } from "@heroui/react";
 import { EmptyState, PressableFeedback, Widget } from "@heroui-pro/react";
 import NumberFlow from "@number-flow/react";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { livePnl } from "@/lib/compute";
 import { cls, moneyFormatOptions } from "@/lib/format";
-import { hlSocket } from "@/lib/hlws";
 import { closePosition } from "@/lib/trade";
+import { useMarkPrices } from "@/lib/useMarkPrice";
 import type { Position } from "@/lib/types";
 
-const MIDS_THROTTLE_MS = 1000;
-
 export default function Positions({ positions, address }: { positions: Position[]; address?: string }) {
-  const [mids, setMids] = useState<Record<string, number>>({});
   const [closing, setClosing] = useState(false);
-  const midsRef = useRef<Record<string, number>>({});
-  const flushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const coins = positions.map((p) => p.coin).join(",");
-
-  useEffect(() => {
-    const wanted = coins.split(",").filter(Boolean);
-    if (!wanted.length) return;
-    const off = hlSocket.subscribe({ type: "allMids" }, (data) => {
-      const incoming = (data as { mids?: Record<string, string> })?.mids;
-      if (!incoming) return;
-      let changed = false;
-      for (const coin of wanted) {
-        const raw = incoming[coin];
-        if (raw == null) continue;
-        const n = +raw;
-        if (n && midsRef.current[coin] !== n) {
-          midsRef.current[coin] = n;
-          changed = true;
-        }
-      }
-      if (changed && !flushRef.current) {
-        flushRef.current = setTimeout(() => {
-          flushRef.current = null;
-          setMids({ ...midsRef.current });
-        }, MIDS_THROTTLE_MS);
-      }
-    });
-    return () => {
-      off();
-      if (flushRef.current) {
-        clearTimeout(flushRef.current);
-        flushRef.current = null;
-      }
-    };
-  }, [coins]);
+  const mids = useMarkPrices();
 
   const rows = positions.map((p) => livePnl(p, mids[p.coin]));
 
