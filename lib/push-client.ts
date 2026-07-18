@@ -30,6 +30,14 @@ export async function getExistingSubscription(): Promise<PushSubscription | null
   return registration.pushManager.getSubscription();
 }
 
+export async function saveSubscriptionForAddress(address: string, subscription: PushSubscription): Promise<void> {
+  await fetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ address, subscription: JSON.parse(JSON.stringify(subscription)) }),
+  });
+}
+
 export async function subscribeToPush(address: string): Promise<PushSubscription> {
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   if (!publicKey) throw new Error("NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set");
@@ -40,11 +48,7 @@ export async function subscribeToPush(address: string): Promise<PushSubscription
     applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
   });
 
-  await fetch("/api/push/subscribe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address, subscription: JSON.parse(JSON.stringify(subscription)) }),
-  });
+  await saveSubscriptionForAddress(address, subscription);
 
   return subscription;
 }

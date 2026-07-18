@@ -6,6 +6,7 @@ import {
   isPushSupported,
   isStandalone,
   registerServiceWorker,
+  saveSubscriptionForAddress,
   subscribeToPush,
 } from "@/lib/push-client";
 import { Alert, Button } from "@heroui/react";
@@ -43,6 +44,8 @@ export default function NotificationPrompt({ address }: { address: string }) {
       if (cancelled) return;
 
       if (Notification.permission === "granted" && existing) {
+        await saveSubscriptionForAddress(address, existing);
+        if (cancelled) return;
         setStatus("subscribed");
         return;
       }
