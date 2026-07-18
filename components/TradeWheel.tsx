@@ -425,10 +425,12 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
           </div>
 
           <div className="absolute top-1/2 left-4 z-10 -translate-y-1/2" onPointerDown={(e) => e.stopPropagation()}>
-            <div className="rounded-lg bg-black/50 px-3 py-2 flex items-center justify-center shadow-field">
+            <div
+              className={`flex items-center justify-center rounded-full px-3 py-2 shadow-field transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
+            >
               <NumberFlowInput
                 key={`${coin}-${inputEpoch}`}
-                className="text-3xl font-bold text-foreground tabular-nums outline-none"
+                className={`text-3xl font-bold tabular-nums outline-none text-foreground`}
                 decimalScale={0}
                 format={formatCurrencyInput}
                 isAllowed={(v) => v == null || v >= 0}
