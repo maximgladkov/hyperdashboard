@@ -1,4 +1,4 @@
-import type { Fill, FundingEvent, LedgerEvent, OpenOrder, WinData } from "./types";
+import type { Fill, FundingEvent, LedgerEvent, OpenOrder, PerpMeta, WinData } from "./types";
 
 const API = "https://api.hyperliquid.xyz/info";
 
@@ -18,6 +18,21 @@ export async function fetchOpenOrders(u: string): Promise<OpenOrder[]> {
   } catch {
     return [];
   }
+}
+
+let perpMetaPromise: Promise<PerpMeta | null> | null = null;
+
+function fetchPerpMeta(): Promise<PerpMeta | null> {
+  if (!perpMetaPromise) {
+    perpMetaPromise = info<PerpMeta>({ type: "meta" }).catch(() => null);
+  }
+  return perpMetaPromise;
+}
+
+export async function fetchMaxLeverage(coin: string): Promise<number | null> {
+  const meta = await fetchPerpMeta();
+  const asset = meta?.universe?.find((a) => a.name === coin);
+  return asset?.maxLeverage ?? null;
 }
 
 export async function fetchLedger(u: string, start: number, end: number): Promise<LedgerEvent[]> {

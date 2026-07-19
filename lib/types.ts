@@ -19,15 +19,22 @@ export type Position = {
   entryPx: string;
   unrealizedPnl: string;
   returnOnEquity: string;
-  leverage?: { value?: number };
+  positionValue?: string;
+  maxLeverage?: number;
+  leverage?: { value?: number; type?: "cross" | "isolated" };
 };
 
 export type AssetPosition = { position: Position };
 
 export type ClearinghouseState = {
   marginSummary?: { accountValue?: string };
+  crossMarginSummary?: { accountValue?: string };
+  crossMaintenanceMarginUsed?: string;
   assetPositions?: AssetPosition[];
 };
+
+export type PerpMetaAsset = { name: string; maxLeverage?: number };
+export type PerpMeta = { universe?: PerpMetaAsset[] };
 
 export type SpotBalance = { coin: string; total: string };
 

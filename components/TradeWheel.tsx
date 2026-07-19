@@ -3,12 +3,13 @@
 import { useConfirm } from "@/components/ConfirmDialog";
 import { StepperField } from "@/components/StepperField";
 import { moneyFormatOptions, usd } from "@/lib/format";
-import { fetchOpenOrders } from "@/lib/hyperliquid";
+import { fetchMaxLeverage, fetchOpenOrders } from "@/lib/hyperliquid";
+import { estimateLiquidationPrice, type LiqOrder } from "@/lib/liquidation";
 import { orderLabel, orderPrice } from "@/lib/orders";
 import { cancelOrder, placeOrder } from "@/lib/trade";
 import { usePositionStep, usePriceStep, useTradeSize } from "@/lib/tradeSteps";
 import type { TenantState } from "@/lib/trail";
-import type { OpenOrder } from "@/lib/types";
+import type { ClearinghouseState, OpenOrder } from "@/lib/types";
 import { useMarkPrice } from "@/lib/useMarkPrice";
 import { NumberFlowInput } from "@daformat/react-number-flow-input";
 import { Widget } from "@heroui-pro/react";
@@ -32,6 +33,15 @@ function formatTick(v: number, decimals: number): string {
 
 function formatSize(n: number): string {
   return n.toFixed(4).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
+}
+
+function confirmBody(mainLine: string, estimatedLiq: number | null) {
+  return (
+    <>
+      <p>{mainLine}</p>
+      {estimatedLiq != null && <p className="mt-1 text-xs text-muted">Est. liquidation &asymp; {usd(estimatedLiq)}</p>}
+    </>
+  );
 }
 
 function formatCurrencyInput(raw: string): string {
@@ -71,7 +81,17 @@ async function fetchTrailState(address: string): Promise<TrailStateResponse> {
 
 type DragState = { startY: number; startValue: number };
 
-export default function TradeWheel({ coin, initialPrice, address }: { coin: string; initialPrice?: number; address?: string }) {
+export default function TradeWheel({
+  coin,
+  initialPrice,
+  address,
+  clearing,
+}: {
+  coin: string;
+  initialPrice?: number;
+  address?: string;
+  clearing?: ClearinghouseState;
+}) {
   const mark = useMarkPrice(coin, initialPrice ?? null);
   const [heldValue, setHeldValue] = useState<number | null>(initialPrice ?? null);
   const [following, setFollowing] = useState(true);
@@ -153,6 +173,76 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
       clearInterval(id);
     };
   }, [address, coin]);
+
+  const existingPosition = useMemo(
+    () => clearing?.assetPositions?.find((p) => p.position.coin === coin)?.position ?? null,
+    [clearing, coin]
+  );
+
+  const [fetchedMaxLeverage, setFetchedMaxLeverage] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (existingPosition?.maxLeverage) return;
+    let cancelled = false;
+    fetchMaxLeverage(coin).then((lev) => {
+      if (!cancelled) setFetchedMaxLeverage(lev);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [coin, existingPosition?.maxLeverage]);
+
+  const isIsolated = existingPosition?.leverage?.type === "isolated";
+  const maxLeverage = existingPosition?.maxLeverage ?? fetchedMaxLeverage;
+  const crossAccountValue = clearing?.crossMarginSummary?.accountValue != null ? +clearing.crossMarginSummary.accountValue : null;
+  const crossMaintenanceMarginUsed = clearing?.crossMaintenanceMarginUsed != null ? +clearing.crossMaintenanceMarginUsed : null;
+  const existingSize = existingPosition ? +existingPosition.szi : 0;
+  const existingPositionValue = existingPosition?.positionValue != null ? +existingPosition.positionValue : 0;
+
+  const buyAddOrders = useMemo<LiqOrder[]>(
+    () => orders.filter((o) => o.side === "B" && !o.reduceOnly).map((o) => ({ price: orderPrice(o), size: +o.sz })),
+    [orders]
+  );
+  const sellAddOrders = useMemo<LiqOrder[]>(
+    () => orders.filter((o) => o.side === "A" && !o.reduceOnly).map((o) => ({ price: orderPrice(o), size: +o.sz })),
+    [orders]
+  );
+
+  const estimateLiqFor = useCallback(
+    (orderSide: "buy" | "sell"): number | null => {
+      if (isIsolated || mark == null) return null;
+      const limitPrice = following ? null : value;
+      return estimateLiquidationPrice({
+        side: orderSide,
+        mark,
+        newOrderSize: size,
+        newOrderPrice: limitPrice,
+        existingSize,
+        existingPositionValue,
+        maxLeverage,
+        crossAccountValue,
+        crossMaintenanceMarginUsed,
+        addOrders: orderSide === "buy" ? buyAddOrders : sellAddOrders,
+      });
+    },
+    [
+      isIsolated,
+      mark,
+      following,
+      value,
+      size,
+      existingSize,
+      existingPositionValue,
+      maxLeverage,
+      crossAccountValue,
+      crossMaintenanceMarginUsed,
+      buyAddOrders,
+      sellAddOrders,
+    ]
+  );
+
+  const estimatedLiqBuy = useMemo(() => estimateLiqFor("buy"), [estimateLiqFor]);
+  const estimatedLiqSell = useMemo(() => estimateLiqFor("sell"), [estimateLiqFor]);
 
   const step = priceStep;
 
@@ -466,7 +556,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                   onPress={() =>
                     confirm(() => submitOrder("buy"), {
                       title: "Confirm long",
-                      body: `Market long ${formatSize(size)} ${coin}.`,
+                      body: confirmBody(`Market long ${formatSize(size)} ${coin}.`, estimatedLiqBuy),
                       confirmLabel: "Long",
                       confirmVariant: "success",
                     })
@@ -481,7 +571,7 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                   onPress={() =>
                     confirm(() => submitOrder("sell"), {
                       title: "Confirm short",
-                      body: `Market short ${formatSize(size)} ${coin}.`,
+                      body: confirmBody(`Market short ${formatSize(size)} ${coin}.`, estimatedLiqSell),
                       confirmLabel: "Short",
                       confirmVariant: "danger",
                     })
@@ -501,7 +591,10 @@ export default function TradeWheel({ coin, initialPrice, address }: { coin: stri
                 onPress={() =>
                   confirm(() => submitOrder(isLong ? "buy" : "sell"), {
                     title: isLong ? "Confirm long" : "Confirm short",
-                    body: `Limit ${isLong ? "long" : "short"} ${formatSize(size)} ${coin} @ ${usd(value)}.`,
+                    body: confirmBody(
+                      `Limit ${isLong ? "long" : "short"} ${formatSize(size)} ${coin} @ ${usd(value)}.`,
+                      isLong ? estimatedLiqBuy : estimatedLiqSell
+                    ),
                     confirmLabel: isLong ? "Long" : "Short",
                     confirmVariant: isLong ? "success" : "danger",
                   })

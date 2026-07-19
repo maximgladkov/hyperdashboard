@@ -425,6 +425,7 @@ export default function Dashboard() {
         <div className="order-1 flex flex-col gap-4 lg:order-2 lg:w-[400px] lg:shrink-0">
           <TradeWheel
             address={state.currentUser!}
+            clearing={D.clearing}
             coin={positions[0]?.coin ?? "BTC"}
             initialPrice={positions[0] ? +positions[0].entryPx : undefined}
           />
