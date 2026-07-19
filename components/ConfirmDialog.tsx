@@ -71,7 +71,7 @@ export function useConfirm() {
             </Button>
             <Button style={isSuccess ? SUCCESS_BUTTON_STYLE : undefined} variant={confirmVariant}>
               <PressableFeedback.HoldConfirm className={holdClassName} duration={HOLD_MS} onComplete={handleConfirm}>
-                {confirmLabel}
+                Hold to {confirmLabel}
               </PressableFeedback.HoldConfirm>
               Hold to {confirmLabel}
             </Button>

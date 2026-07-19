@@ -39,7 +39,7 @@ function confirmBody(mainLine: string, estimatedLiq: number | null) {
   return (
     <>
       <p>{mainLine}</p>
-      {estimatedLiq != null && <p className="mt-1 text-xs text-muted">Est. liquidation &asymp; {usd(estimatedLiq)}</p>}
+      {estimatedLiq != null && <p className="mt-2">Est. liquidation &asymp; {usd(estimatedLiq)}</p>}
     </>
   );
 }
