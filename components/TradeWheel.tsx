@@ -72,7 +72,7 @@ function ConfirmStat({
           value={value}
         >
           {suffix && (
-            <NumberValue.Suffix className="ml-1 text-sm text-muted leading-none">
+            <NumberValue.Suffix className="ml-2 text-sm text-muted leading-none">
               {suffix}
             </NumberValue.Suffix>
           )}
