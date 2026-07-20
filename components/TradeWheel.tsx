@@ -391,7 +391,13 @@ export default function TradeWheel({
     });
   }, [step]);
 
+  const suppressExitRef = useRef(false);
+
   const exitFollowing = useCallback(() => {
+    if (suppressExitRef.current) {
+      suppressExitRef.current = false;
+      return;
+    }
     if (following) setFollowing(false);
   }, [following]);
 
@@ -400,6 +406,7 @@ export default function TradeWheel({
       const now = e.timeStamp;
       if (now - lastTapRef.current < DOUBLE_TAP_MS) {
         lastTapRef.current = 0;
+        suppressExitRef.current = true;
         handleReset();
       } else {
         lastTapRef.current = now;
