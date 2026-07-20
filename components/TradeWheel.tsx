@@ -7,14 +7,14 @@ import { fetchMaxLeverage, fetchOpenOrders } from "@/lib/hyperliquid";
 import { estimateLiquidationPrice, type LiqOrder } from "@/lib/liquidation";
 import { orderLabel, orderPrice } from "@/lib/orders";
 import { cancelOrder, placeOrder } from "@/lib/trade";
-import { usePositionStep, usePriceStep, useTradeSize } from "@/lib/tradeSteps";
+import { useLeverage, usePositionStep, usePriceStep, useTradeSize } from "@/lib/tradeSteps";
 import type { TenantState } from "@/lib/trail";
 import type { ClearinghouseState, OpenOrder } from "@/lib/types";
 import { useMarkPrice } from "@/lib/useMarkPrice";
 import { NumberFlowInput } from "@daformat/react-number-flow-input";
-import { Widget } from "@heroui-pro/react";
+import { NumberValue, Widget } from "@heroui-pro/react";
 import type { ButtonProps } from "@heroui/react";
-import { Button, ButtonGroup, Description, Modal, toast, useOverlayState } from "@heroui/react";
+import { Button, ButtonGroup, Card, Description, Modal, toast, useOverlayState } from "@heroui/react";
 import NumberFlow from "@number-flow/react";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -35,12 +35,66 @@ function formatSize(n: number): string {
   return n.toFixed(4).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
 }
 
-function confirmBody(mainLine: string, estimatedLiq: number | null) {
+function ConfirmStat({
+  label,
+  value,
+  currency = true,
+  suffix,
+  tone,
+}: {
+  label: string;
+  value: number | null;
+  currency?: boolean;
+  suffix?: string;
+  tone?: "danger";
+}) {
   return (
-    <>
-      <p>{mainLine}</p>
-      {estimatedLiq != null && <p className="mt-2">Est. liquidation &asymp; {usd(estimatedLiq)}</p>}
-    </>
+    <div className="flex items-center justify-between gap-4 px-5 py-4">
+      <span className="text-sm text-muted">{label}</span>
+      {value == null ? (
+        <span className="font-mono text-sm text-muted">&mdash;</span>
+      ) : (
+        <NumberValue
+          className={`text-xl items-baseline tabular-nums ${tone === "danger" ? "text-danger" : "text-foreground"}`}
+          currency={currency ? "USD" : undefined}
+          maximumFractionDigits={currency ? (Math.abs(value) >= 1000 ? 0 : 2) : 4}
+          style={currency ? "currency" : "decimal"}
+          value={value}
+        >
+          {suffix && (
+            <NumberValue.Suffix className="ml-1 text-sm text-muted leading-none">
+              {suffix}
+            </NumberValue.Suffix>
+          )}
+        </NumberValue>
+      )}
+    </div>
+  );
+}
+
+function confirmBody({
+  orderType,
+  size,
+  coin,
+  price,
+  isMarket,
+  estimatedLiq,
+}: {
+  orderType: string;
+  size: number;
+  coin: string;
+  price: number | null;
+  isMarket: boolean;
+  estimatedLiq: number | null;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <Card variant="secondary" className="flex flex-col gap-0 p-0 divide-y">
+        <ConfirmStat currency={false} label="Size" suffix={coin} value={size} />
+        <ConfirmStat label={isMarket ? "Price (\u2248 mark)" : "Price"} value={price} />
+        <ConfirmStat label="Est. liquidation" tone="danger" value={estimatedLiq} />
+      </Card>
+    </div>
   );
 }
 
@@ -194,10 +248,7 @@ export default function TradeWheel({
 
   const isIsolated = existingPosition?.leverage?.type === "isolated";
   const maxLeverage = existingPosition?.maxLeverage ?? fetchedMaxLeverage;
-  const crossAccountValue = clearing?.crossMarginSummary?.accountValue != null ? +clearing.crossMarginSummary.accountValue : null;
-  const crossMaintenanceMarginUsed = clearing?.crossMaintenanceMarginUsed != null ? +clearing.crossMaintenanceMarginUsed : null;
-  const existingSize = existingPosition ? +existingPosition.szi : 0;
-  const existingPositionValue = existingPosition?.positionValue != null ? +existingPosition.positionValue : 0;
+  const [leverage] = useLeverage();
 
   const buyAddOrders = useMemo<LiqOrder[]>(
     () => orders.filter((o) => o.side === "B" && !o.reduceOnly).map((o) => ({ price: orderPrice(o), size: +o.sz })),
@@ -217,28 +268,12 @@ export default function TradeWheel({
         mark,
         newOrderSize: size,
         newOrderPrice: limitPrice,
-        existingSize,
-        existingPositionValue,
+        leverage,
         maxLeverage,
-        crossAccountValue,
-        crossMaintenanceMarginUsed,
         addOrders: orderSide === "buy" ? buyAddOrders : sellAddOrders,
       });
     },
-    [
-      isIsolated,
-      mark,
-      following,
-      value,
-      size,
-      existingSize,
-      existingPositionValue,
-      maxLeverage,
-      crossAccountValue,
-      crossMaintenanceMarginUsed,
-      buyAddOrders,
-      sellAddOrders,
-    ]
+    [isIsolated, mark, following, value, size, leverage, maxLeverage, buyAddOrders, sellAddOrders]
   );
 
   const estimatedLiqBuy = useMemo(() => estimateLiqFor("buy"), [estimateLiqFor]);
@@ -373,6 +408,8 @@ export default function TradeWheel({
   const markOffset = mark != null && value != null ? ((value - mark) / step) * PIXELS_PER_STEP : 0;
   const entryOffset = entryPx != null && value != null ? ((value - entryPx) / step) * PIXELS_PER_STEP : null;
   const stopOffset = stopPx != null && value != null ? ((value - stopPx) / step) * PIXELS_PER_STEP : null;
+  const liquidationPx = existingPosition?.liquidationPx != null ? +existingPosition.liquidationPx : null;
+  const liqOffset = liquidationPx != null && value != null ? ((value - liquidationPx) / step) * PIXELS_PER_STEP : null;
 
   const orderLines = useMemo(() => {
     if (value == null) return [];
@@ -447,6 +484,20 @@ export default function TradeWheel({
                 STOP
                 {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
                 @ <span className="tabular-nums">{usd(stopPx)}</span>
+              </span>
+            </div>
+          )}
+
+          {liqOffset != null && (
+            <div
+              className="pointer-events-none absolute inset-x-0 top-1/2 z-[4] border-t-2 border-solid border-red-600"
+              style={{
+                transform: `translateY(${liqOffset}px)`,
+                transition: isDragging ? "none" : "transform 300ms ease-out",
+              }}
+            >
+              <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-red-600 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-white">
+                LIQ <span className="tabular-nums">{usd(liquidationPx)}</span>
               </span>
             </div>
           )}
@@ -556,7 +607,14 @@ export default function TradeWheel({
                   onPress={() =>
                     confirm(() => submitOrder("buy"), {
                       title: "Confirm long",
-                      body: confirmBody(`Market long ${formatSize(size)} ${coin}.`, estimatedLiqBuy),
+                      body: confirmBody({
+                        orderType: "Market order",
+                        size,
+                        coin,
+                        price: mark,
+                        isMarket: true,
+                        estimatedLiq: estimatedLiqBuy,
+                      }),
                       confirmLabel: "Long",
                       confirmVariant: "success",
                     })
@@ -571,7 +629,14 @@ export default function TradeWheel({
                   onPress={() =>
                     confirm(() => submitOrder("sell"), {
                       title: "Confirm short",
-                      body: confirmBody(`Market short ${formatSize(size)} ${coin}.`, estimatedLiqSell),
+                      body: confirmBody({
+                        orderType: "Market order",
+                        size,
+                        coin,
+                        price: mark,
+                        isMarket: true,
+                        estimatedLiq: estimatedLiqSell,
+                      }),
                       confirmLabel: "Short",
                       confirmVariant: "danger",
                     })
@@ -591,10 +656,14 @@ export default function TradeWheel({
                 onPress={() =>
                   confirm(() => submitOrder(isLong ? "buy" : "sell"), {
                     title: isLong ? "Confirm long" : "Confirm short",
-                    body: confirmBody(
-                      `Limit ${isLong ? "long" : "short"} ${formatSize(size)} ${coin} @ ${usd(value)}.`,
-                      isLong ? estimatedLiqBuy : estimatedLiqSell
-                    ),
+                    body: confirmBody({
+                      orderType: "Limit order",
+                      size,
+                      coin,
+                      price: value,
+                      isMarket: false,
+                      estimatedLiq: isLong ? estimatedLiqBuy : estimatedLiqSell,
+                    }),
                     confirmLabel: isLong ? "Long" : "Short",
                     confirmVariant: isLong ? "success" : "danger",
                   })

@@ -25,7 +25,7 @@ import {
 } from "@/lib/compute";
 import { hlSocket } from "@/lib/hlws";
 import { fetchRange, info } from "@/lib/hyperliquid";
-import { usePositionStep, usePriceStep } from "@/lib/tradeSteps";
+import { useLeverage, usePositionStep, usePriceStep } from "@/lib/tradeSteps";
 import type {
   AppData,
   ClearinghouseState,
@@ -492,9 +492,10 @@ function Header({
   refreshing: boolean;
 }) {
   const setup = useOverlayState();
-  const steps = useOverlayState();
+  const tradeSettings = useOverlayState();
   const [priceStep, setPriceStep] = usePriceStep();
   const [positionStep, setPositionStep] = usePositionStep();
+  const [leverage, setLeverage] = useLeverage();
 
   const handleSetupSubmit = (e: React.FormEvent) => {
     onSubmit(e);
@@ -526,14 +527,14 @@ function Header({
             <Dropdown.Menu
               onAction={(key) => {
                 if (key === "setup") setup.open();
-                if (key === "steps") steps.open();
+                if (key === "trade-settings") tradeSettings.open();
               }}
             >
               <Dropdown.Item id="setup" textValue="Setup account">
                 <Label>Setup account</Label>
               </Dropdown.Item>
-              <Dropdown.Item id="steps" textValue="Step settings">
-                <Label>Step settings</Label>
+              <Dropdown.Item id="trade-settings" textValue="Trade settings">
+                <Label>Trade settings</Label>
               </Dropdown.Item>
             </Dropdown.Menu>
           </Dropdown.Popover>
@@ -577,12 +578,12 @@ function Header({
         </Modal.Container>
       </Modal.Backdrop>
 
-      <Modal.Backdrop isOpen={steps.isOpen} onOpenChange={steps.setOpen}>
+      <Modal.Backdrop isOpen={tradeSettings.isOpen} onOpenChange={tradeSettings.setOpen}>
         <Modal.Container size="xs">
           <Modal.Dialog>
             <Modal.CloseTrigger />
             <Modal.Header>
-              <Modal.Heading>Step settings</Modal.Heading>
+              <Modal.Heading>Trade settings</Modal.Heading>
             </Modal.Header>
             <Modal.Body>
               <div className="flex flex-col gap-4">
@@ -620,6 +621,23 @@ function Header({
                     onChange={setPriceStep}
                   />
                   <span className="text-xs text-muted">Shared by the Trade Wheel and the trailing stop distance.</span>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <span className="text-sm text-muted">Leverage</span>
+                  <StepperField
+                    aria-label="Leverage"
+                    className="w-full"
+                    groupClassName="w-full"
+                    label="Leverage"
+                    minValue={1}
+                    step={1}
+                    suffix="x"
+                    value={leverage}
+                    valueClassName="flex-1 text-center text-sm"
+                    onChange={setLeverage}
+                  />
+                  <span className="text-xs text-muted">Used to project the estimated liquidation price in the Trade Wheel.</span>
                 </div>
               </div>
             </Modal.Body>

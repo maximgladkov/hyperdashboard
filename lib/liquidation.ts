@@ -5,85 +5,65 @@ export type LiqInput = {
   mark: number;
   newOrderSize: number;
   newOrderPrice: number | null;
-  existingSize: number;
-  existingPositionValue: number;
+  leverage: number;
   maxLeverage: number | null;
-  crossAccountValue: number | null;
-  crossMaintenanceMarginUsed: number | null;
   addOrders: LiqOrder[];
 };
 
-function candidateLiqPrice(priceRef: number, size: number, equity: number, maintOther: number, l: number): number | null {
+function candidateLiqPrice(size: number, notionalSum: number, leverage: number, l: number): number | null {
   const sideSign = Math.sign(size);
   if (sideSign === 0) return null;
-  const maintAtRef = maintOther + Math.abs(size) * priceRef * l;
-  const marginAvailable = equity - maintAtRef;
-  const denom = 1 - l * sideSign;
+  const absSize = Math.abs(size);
+  const denom = absSize * (sideSign - l * sideSign);
   if (denom === 0) return null;
-  return priceRef - (sideSign * marginAvailable) / size / denom;
+  const price = (notionalSum * (sideSign - 1 / leverage)) / denom;
+  if (!isFinite(price) || price < 0) return null;
+  return price;
 }
 
 export function estimateLiquidationPrice(input: LiqInput): number | null {
-  const {
-    side,
-    mark,
-    newOrderSize,
-    newOrderPrice,
-    existingSize,
-    existingPositionValue,
-    maxLeverage,
-    crossAccountValue,
-    crossMaintenanceMarginUsed,
-    addOrders,
-  } = input;
+  const { side, mark, newOrderSize, newOrderPrice, leverage, maxLeverage, addOrders } = input;
 
-  if (
-    !maxLeverage ||
-    maxLeverage <= 0 ||
-    crossAccountValue == null ||
-    crossMaintenanceMarginUsed == null ||
-    !isFinite(mark) ||
-    mark <= 0
-  ) {
+  if (!maxLeverage || maxLeverage <= 0 || !leverage || leverage <= 0 || !isFinite(mark) || mark <= 0) {
     return null;
   }
 
   const l = 1 / (2 * maxLeverage);
-  const sideMul = side === "buy" ? 1 : -1;
-  const maintOther = crossMaintenanceMarginUsed - existingPositionValue * l;
+  const sideSign = side === "buy" ? 1 : -1;
+
+  // Matches Hyperliquid's own order-ticket preview: the projected liquidation price is
+  // computed for this order (plus the resting ladder behind it) as a fresh position at
+  // the selected leverage, independent of any position already held in this coin.
+  let size = 0;
+  let notionalSum = 0;
 
   const isMarket = newOrderPrice == null;
-  const instantDelta = isMarket ? sideMul * newOrderSize : 0;
+  if (isMarket) {
+    size += sideSign * newOrderSize;
+    notionalSum += newOrderSize * mark;
+  }
 
-  let priceRef = mark;
-  let size = existingSize + instantDelta;
-  let equity = crossAccountValue;
-
-  const breakpoints: { price: number; delta: number }[] = [];
+  const breakpoints: { price: number; size: number }[] = [];
   if (!isMarket && newOrderPrice != null) {
-    breakpoints.push({ price: newOrderPrice, delta: sideMul * newOrderSize });
+    breakpoints.push({ price: newOrderPrice, size: newOrderSize });
   }
   for (const o of addOrders) {
-    if (o.size > 0 && isFinite(o.price)) breakpoints.push({ price: o.price, delta: sideMul * o.size });
+    if (o.size > 0 && isFinite(o.price)) breakpoints.push({ price: o.price, size: o.size });
   }
 
-  breakpoints.sort((a, b) => (sideMul > 0 ? b.price - a.price : a.price - b.price));
+  breakpoints.sort((a, b) => (sideSign > 0 ? b.price - a.price : a.price - b.price));
 
   for (const bp of breakpoints) {
     if (size === 0) break;
-    const candidate = candidateLiqPrice(priceRef, size, equity, maintOther, l);
+    const candidate = candidateLiqPrice(size, notionalSum, leverage, l);
     if (candidate == null) return null;
-    const sideSign = Math.sign(size);
     const reachedFirst = sideSign > 0 ? candidate >= bp.price : candidate <= bp.price;
-    if (reachedFirst) return candidate < 0 ? null : candidate;
+    if (reachedFirst) return candidate;
 
-    equity += size * (bp.price - priceRef);
-    size += bp.delta;
-    priceRef = bp.price;
+    size += sideSign * bp.size;
+    notionalSum += bp.size * bp.price;
   }
 
   if (size === 0) return null;
-  const final = candidateLiqPrice(priceRef, size, equity, maintOther, l);
-  if (final == null || final < 0) return null;
-  return final;
+  return candidateLiqPrice(size, notionalSum, leverage, l);
 }

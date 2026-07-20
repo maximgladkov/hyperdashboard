@@ -22,6 +22,7 @@ export type Position = {
   positionValue?: string;
   maxLeverage?: number;
   leverage?: { value?: number; type?: "cross" | "isolated" };
+  liquidationPx?: string;
 };
 
 export type AssetPosition = { position: Position };

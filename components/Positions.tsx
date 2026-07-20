@@ -6,7 +6,7 @@ import NumberFlow from "@number-flow/react";
 import { useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
 import { livePnl } from "@/lib/compute";
-import { cls, moneyFormatOptions } from "@/lib/format";
+import { cls, moneyFormatOptions, usd } from "@/lib/format";
 import { closePosition } from "@/lib/trade";
 import { useMarkPrices } from "@/lib/useMarkPrice";
 import type { Position } from "@/lib/types";
@@ -53,6 +53,9 @@ export default function Positions({ positions, address }: { positions: Position[
                   <div className="font-mono text-xs text-muted">
                     {Math.abs(+p.szi)} @ {p.entryPx}
                   </div>
+                  {p.liquidationPx && (
+                    <div className="font-mono text-xs text-danger">Liq. {usd(+p.liquidationPx)}</div>
+                  )}
                 </div>
                 <div className="text-right">
                   <div className={`font-mono font-semibold ${cls(p.unrealizedPnl)}`}>
