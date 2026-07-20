@@ -595,14 +595,14 @@ function TradeWheelBody({
         <div
           className="relative aspect-square min-h-[360px] w-full select-none overflow-hidden bg-surface"
           onPointerDown={handleTapReset}
-          onTouchStart={exitFollowing}
-          onWheel={exitFollowing}
         >
           <div
             ref={scrollRef}
             className="absolute inset-0 z-[1] overflow-x-hidden overflow-y-scroll overscroll-contain [mask-image:linear-gradient(to_bottom,transparent,black_12%,black_88%,transparent)] [&::-webkit-scrollbar]:hidden"
             style={{ scrollbarWidth: "none" }}
             onScroll={handleScroll}
+            onTouchStart={exitFollowing}
+            onWheel={exitFollowing}
           >
             <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
               {virtualizer.getVirtualItems().map((item) => {
