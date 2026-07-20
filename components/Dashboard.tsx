@@ -392,7 +392,7 @@ export default function Dashboard() {
           <Spinner size="sm" />
           Querying Hyperliquid…
         </div>
-        <Toast.Provider />
+        <Toast.Provider placement="top" />
       </>
     );
   }
@@ -408,7 +408,7 @@ export default function Dashboard() {
             <Alert.Description>{state.error}.</Alert.Description>
           </Alert.Content>
         </Alert>
-        <Toast.Provider />
+        <Toast.Provider placement="top" />
       </>
     );
   }
@@ -511,7 +511,7 @@ export default function Dashboard() {
         recent, so very deep all-time market attribution can be partial. Deposits and withdrawals don&apos;t count as
         profit — PnL is trading only.
       </footer>
-      <Toast.Provider />
+      <Toast.Provider placement="top" />
     </>
   );
 }
