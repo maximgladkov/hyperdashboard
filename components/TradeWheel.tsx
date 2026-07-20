@@ -298,6 +298,7 @@ export default function TradeWheel({
     const priceIndex = price / step;
     let start = windowStartRef.current;
     let contentIndex = start == null ? null : start - priceIndex;
+    let recentered = false;
     if (
       start == null ||
       contentIndex == null ||
@@ -307,20 +308,18 @@ export default function TradeWheel({
       start = VIRTUAL_CENTER + Math.round(priceIndex);
       windowStartRef.current = start;
       contentIndex = start - priceIndex;
+      recentered = true;
     }
     const el = scrollRef.current;
     const top = scrollTopForIndex(contentIndex);
     if (el) {
-      if (opts?.smooth) el.scrollTo({ top, behavior: "smooth" });
+      if (opts?.smooth && !recentered) el.scrollTo({ top, behavior: "smooth" });
       else el.scrollTop = top;
     }
     setScrollValue(price);
   }, [step]);
 
-  const pendingSmoothResetRef = useRef(false);
-
   const handleReset = useCallback(() => {
-    pendingSmoothResetRef.current = true;
     setFollowing(true);
   }, []);
 
@@ -339,9 +338,7 @@ export default function TradeWheel({
 
   useEffect(() => {
     if (!following || mark == null) return;
-    const smooth = pendingSmoothResetRef.current;
-    pendingSmoothResetRef.current = false;
-    scrollToPrice(mark, { smooth });
+    scrollToPrice(mark, { smooth: true });
   }, [following, mark, scrollToPrice]);
 
   useEffect(() => {
