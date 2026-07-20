@@ -50,7 +50,7 @@ export async function fetchLedger(u: string, start: number, end: number): Promis
   return out;
 }
 
-export async function fetchRange(u: string, start: number, end: number): Promise<WinData> {
+async function fetchFills(u: string, start: number, end: number): Promise<Fill[]> {
   let fills: Fill[] = [];
   let t = start;
   for (let i = 0; i < 10; i++) {
@@ -60,17 +60,42 @@ export async function fetchRange(u: string, start: number, end: number): Promise
     if (batch.length < 2000) break;
     t = Math.max(...batch.map((f) => f.time)) + 1;
   }
+  return fills;
+}
+
+async function fetchFunding(u: string, start: number, end: number): Promise<FundingEvent[]> {
   let funding: FundingEvent[] = [];
-  let ft = start;
+  let t = start;
   try {
     for (let i = 0; i < 20; i++) {
-      const batch = await info<FundingEvent[]>({ type: "userFunding", user: u, startTime: ft, endTime: end });
+      const batch = await info<FundingEvent[]>({ type: "userFunding", user: u, startTime: t, endTime: end });
       if (!batch.length) break;
       funding = funding.concat(batch);
       if (batch.length < 500) break;
-      ft = Math.max(...batch.map((f) => f.time)) + 1;
+      t = Math.max(...batch.map((f) => f.time)) + 1;
     }
   } catch {}
-  const ledger = await fetchLedger(u, start, end);
+  return funding;
+}
+
+export async function fetchRange(u: string, start: number, end: number): Promise<WinData> {
+  const [fills, funding, ledger] = await Promise.all([
+    fetchFills(u, start, end),
+    fetchFunding(u, start, end),
+    fetchLedger(u, start, end),
+  ]);
   return { fills, funding, ledger };
+}
+
+export async function fetchPerpMids(): Promise<Record<string, number>> {
+  const [meta, ctxs] = await info<[PerpMeta, { midPx?: string; markPx?: string }[]]>({
+    type: "metaAndAssetCtxs",
+  });
+  const mids: Record<string, number> = {};
+  const universe = meta.universe || [];
+  for (let i = 0; i < universe.length; i++) {
+    const px = +(ctxs[i]?.markPx || ctxs[i]?.midPx || 0);
+    if (px) mids[universe[i].name] = px;
+  }
+  return mids;
 }

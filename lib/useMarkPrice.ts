@@ -22,9 +22,7 @@ function flush(): void {
   listeners.forEach((l) => l());
 }
 
-function handleMids(data: unknown): void {
-  const mids = (data as { mids?: Record<string, string> })?.mids;
-  if (!mids) return;
+function applyMids(mids: Record<string, number | string>, immediate: boolean): void {
   let changed = false;
   const next = { ...latest };
   for (const coin in mids) {
@@ -37,7 +35,25 @@ function handleMids(data: unknown): void {
   if (!changed) return;
   latest = next;
   dirty = true;
+  if (immediate || published === EMPTY) {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    flush();
+    return;
+  }
   if (!flushTimer) flushTimer = setTimeout(flush, THROTTLE_MS);
+}
+
+function handleMids(data: unknown): void {
+  const mids = (data as { mids?: Record<string, string> })?.mids;
+  if (!mids) return;
+  applyMids(mids, false);
+}
+
+export function seedMarkPrices(mids: Record<string, number>): void {
+  applyMids(mids, true);
 }
 
 function subscribe(listener: () => void): () => void {

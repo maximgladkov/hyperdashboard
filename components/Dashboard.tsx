@@ -24,7 +24,7 @@ import {
   winLabel,
 } from "@/lib/compute";
 import { hlSocket } from "@/lib/hlws";
-import { fetchRange, info } from "@/lib/hyperliquid";
+import { fetchPerpMids, fetchRange, info } from "@/lib/hyperliquid";
 import { useLeverage, usePositionStep, usePriceStep } from "@/lib/tradeSteps";
 import type {
   AppData,
@@ -39,6 +39,7 @@ import type {
   VaultEquity,
   WinData,
 } from "@/lib/types";
+import { seedMarkPrices, useMarkPrices } from "@/lib/useMarkPrice";
 import { StepperField } from "@/components/StepperField";
 import { Alert, Button, Dropdown, Label, Modal, SearchField, Spinner, Toast, toast, useOverlayState } from "@heroui/react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
@@ -48,6 +49,7 @@ const ADDR_STORAGE_KEY = "hlpnl:addr";
 const STALE_MS = 60 * 1000;
 const SNAPSHOT_POLL_MS = 30 * 1000;
 const RESUME_REMOUNT_MS = 30 * 1000;
+const EMPTY_WIN: WinData = { fills: [], funding: [], ledger: [] };
 
 type State = {
   D: AppData | null;
@@ -77,6 +79,7 @@ type Action =
   | { type: "LOAD_START"; soft: boolean }
   | { type: "LOAD_SUCCESS"; D: AppData; currentUser: string; winData: WinData; period: Period; range: Range | null }
   | { type: "LOAD_ERROR"; soft: boolean; message: string }
+  | { type: "WIN_DATA"; winData: WinData }
   | { type: "SNAPSHOT_SUCCESS"; D: AppData }
   | { type: "LIVE_PATCH"; patch: Partial<AppData> }
   | { type: "SET_METRIC"; metric: Metric }
@@ -101,6 +104,8 @@ function reducer(state: State, action: Action): State {
       };
     case "LOAD_ERROR":
       return action.soft ? state : { ...state, loading: false, error: action.message };
+    case "WIN_DATA":
+      return { ...state, winData: action.winData };
     case "SNAPSHOT_SUCCESS":
       return state.D ? { ...state, D: action.D } : state;
     case "LIVE_PATCH":
@@ -153,6 +158,7 @@ async function fetchSnapshot(u: string): Promise<AppData> {
 }
 
 export default function Dashboard() {
+  const mids = useMarkPrices();
   const [state, dispatch] = useReducer(reducer, initialState);
   const [addrInput, setAddrInput] = useState(DEFAULT_ADDR);
   const [refreshing, setRefreshing] = useState(false);
@@ -160,6 +166,7 @@ export default function Dashboard() {
   const winCacheRef = useRef<Map<string, WinData>>(new Map());
   const lastRefreshRef = useRef(0);
   const snapshotInFlightRef = useRef(false);
+  const loadGenRef = useRef(0);
   const toastKeyRef = useRef<string | null>(null);
   const stateRef = useRef(state);
 
@@ -196,19 +203,44 @@ export default function Dashboard() {
         );
       }
       dispatch({ type: "LOAD_START", soft });
+      const loadGen = ++loadGenRef.current;
       try {
         if (!/^0x[a-fA-F0-9]{40}$/.test(u)) throw new Error("that doesn't look like an EVM address");
-        const newD = await fetchSnapshot(u);
+        const [newD] = await Promise.all([
+          fetchSnapshot(u),
+          fetchPerpMids()
+            .then((perpMids) => seedMarkPrices(perpMids))
+            .catch(() => { }),
+        ]);
+        if (loadGen !== loadGenRef.current) return;
         winCacheRef.current.clear();
         const newPeriod: Period = cur.period === "custom" ? "month" : cur.period;
-        const winData = await computeWinData(newD, u, newPeriod, null, winCacheRef.current);
-        dispatch({ type: "LOAD_SUCCESS", D: newD, currentUser: u, winData, period: newPeriod, range: null });
+        const sameUser = soft && u.toLowerCase() === (cur.currentUser || "").toLowerCase();
+        dispatch({
+          type: "LOAD_SUCCESS",
+          D: newD,
+          currentUser: u,
+          winData: sameUser && cur.winData ? cur.winData : EMPTY_WIN,
+          period: newPeriod,
+          range: null,
+        });
         try {
           localStorage.setItem(ADDR_STORAGE_KEY, u);
         } catch { }
         lastRefreshRef.current = Date.now();
         hideToast();
+        void computeWinData(newD, u, newPeriod, null, winCacheRef.current)
+          .then((winData) => {
+            if (loadGen !== loadGenRef.current) return;
+            dispatch({ type: "WIN_DATA", winData });
+          })
+          .catch((err) => {
+            if (loadGen !== loadGenRef.current) return;
+            const message = err instanceof Error ? err.message : String(err);
+            toast.danger("Window lookup failed", { description: message });
+          });
       } catch (err) {
+        if (loadGen !== loadGenRef.current) return;
         const message = err instanceof Error ? err.message : String(err);
         dispatch({ type: "LOAD_ERROR", soft, message });
         if (soft) showToast(`Refresh failed: ${message}`, true);
@@ -222,7 +254,12 @@ export default function Dashboard() {
     if (!cur.currentUser || !cur.D || cur.loading || snapshotInFlightRef.current) return;
     snapshotInFlightRef.current = true;
     try {
-      const newD = await fetchSnapshot(cur.currentUser);
+      const [newD] = await Promise.all([
+        fetchSnapshot(cur.currentUser),
+        fetchPerpMids()
+          .then((perpMids) => seedMarkPrices(perpMids))
+          .catch(() => { }),
+      ]);
       dispatch({ type: "SNAPSHOT_SUCCESS", D: newD });
       lastRefreshRef.current = Date.now();
     } catch {
@@ -389,6 +426,7 @@ export default function Dashboard() {
   const nTrades = coins.reduce((s, c) => s + c.trades, 0);
   const fundTot = activeFunding.reduce((s, f) => s + (+(f?.delta?.usdc || 0)), 0);
   const positions = (D.clearing?.assetPositions || []).map((p) => p.position).filter((p) => +p.szi !== 0);
+  const wheelCoin = positions[0]?.coin ?? "BTC";
 
   const flows = {
     dep: 0,
@@ -445,7 +483,8 @@ export default function Dashboard() {
             key={`wheel-${resumeEpoch}`}
             address={state.currentUser!}
             clearing={D.clearing}
-            coin={positions[0]?.coin ?? "BTC"}
+            coin={wheelCoin}
+            initialPrice={mids[wheelCoin]}
           />
           <Positions key={`positions-${resumeEpoch}`} address={state.currentUser!} positions={positions} />
           <OpenOrders key={`orders-${state.currentUser}-${resumeEpoch}`} address={state.currentUser!} />
