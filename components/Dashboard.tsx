@@ -427,7 +427,6 @@ export default function Dashboard() {
             address={state.currentUser!}
             clearing={D.clearing}
             coin={positions[0]?.coin ?? "BTC"}
-            initialPrice={positions[0] ? +positions[0].entryPx : undefined}
           />
           <Positions positions={positions} address={state.currentUser!} />
           <OpenOrders key={`orders-${state.currentUser}`} address={state.currentUser!} />
