@@ -1,6 +1,7 @@
 "use client";
 
 import MainChart from "@/components/charts/MainChart";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { PERIODS } from "@/lib/compute";
 import type { Metric, Period, Range } from "@/lib/types";
 import { Segment, Widget } from "@heroui-pro/react";
@@ -141,7 +142,9 @@ export default function ChartPanel({
         <Widget.Description>{description}</Widget.Description>
       </Widget.Header>
       <Widget.Content>
-        <MainChart series={series} metric={metric} />
+        <WidgetErrorBoundary label="Chart">
+          <MainChart metric={metric} series={series} />
+        </WidgetErrorBoundary>
       </Widget.Content>
     </Widget>
   );

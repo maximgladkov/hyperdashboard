@@ -2,6 +2,7 @@
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { StepperField } from "@/components/StepperField";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { moneyFormatOptions, usd } from "@/lib/format";
 import { fetchMaxLeverage, fetchOpenOrders } from "@/lib/hyperliquid";
 import { estimateLiquidationPrice, type LiqOrder } from "@/lib/liquidation";
@@ -25,9 +26,9 @@ const ORDERS_POLL_MS = 5000;
 const DOUBLE_TAP_MS = 300;
 const PIXELS_PER_STEP = 32;
 const MAJOR_EVERY = 2;
-const VIRTUAL_COUNT = 500_000;
+const VIRTUAL_COUNT = 40_000;
 const VIRTUAL_CENTER = VIRTUAL_COUNT / 2;
-const RECENTER_MARGIN = 50_000;
+const RECENTER_MARGIN = 5_000;
 
 function scrollTopForIndex(index: number): number {
   return index * PIXELS_PER_STEP + PIXELS_PER_STEP / 2;
@@ -155,6 +156,35 @@ export default function TradeWheel({
   clearing?: ClearinghouseState;
 }) {
   const mark = useMarkPrice(coin, initialPrice ?? null);
+  return (
+    <Widget>
+      <Widget.Header>
+        <Widget.Title>Trade &middot; {coin}</Widget.Title>
+        <Widget.Description className="flex items-center gap-1 font-mono">
+          Mark <NumberFlow format={moneyFormatOptions(mark ?? 0)} value={mark ?? 0} />
+        </Widget.Description>
+      </Widget.Header>
+      <Widget.Content className="p-0">
+        <WidgetErrorBoundary label="Trade wheel">
+          <TradeWheelBody address={address} clearing={clearing} coin={coin} initialPrice={initialPrice} />
+        </WidgetErrorBoundary>
+      </Widget.Content>
+    </Widget>
+  );
+}
+
+function TradeWheelBody({
+  coin,
+  initialPrice,
+  address,
+  clearing,
+}: {
+  coin: string;
+  initialPrice?: number;
+  address?: string;
+  clearing?: ClearinghouseState;
+}) {
+  const mark = useMarkPrice(coin, initialPrice ?? null);
   const [scrollValue, setScrollValue] = useState<number | null>(initialPrice ?? null);
   const [following, setFollowing] = useState(true);
   const [containerHeight, setContainerHeight] = useState(0);
@@ -181,12 +211,16 @@ export default function TradeWheel({
   const prevCoinRef = useRef<string | null>(null);
   const prevStepRef = useRef<number | null>(null);
 
+  const pollTrailRef = useRef<() => void>(() => {});
+  const pollOrdersRef = useRef<() => void>(() => {});
+
   useEffect(() => {
     if (!address) {
       setEntryPx(null);
       setStopPx(null);
       setPositionSize(null);
       setPositionSide(null);
+      pollTrailRef.current = () => {};
       return;
     }
     let cancelled = false;
@@ -213,17 +247,22 @@ export default function TradeWheel({
         setPositionSide(null);
       }
     };
+    pollTrailRef.current = () => {
+      void poll();
+    };
     poll();
     const id = setInterval(poll, POSITION_POLL_MS);
     return () => {
       cancelled = true;
       clearInterval(id);
+      pollTrailRef.current = () => {};
     };
   }, [address, coin]);
 
   useEffect(() => {
     if (!address) {
       setOrders([]);
+      pollOrdersRef.current = () => {};
       return;
     }
     let cancelled = false;
@@ -232,11 +271,15 @@ export default function TradeWheel({
       if (cancelled) return;
       setOrders(list.filter((o) => o.coin === coin && !o.isTrigger));
     };
+    pollOrdersRef.current = () => {
+      void poll();
+    };
     poll();
     const id = setInterval(poll, ORDERS_POLL_MS);
     return () => {
       cancelled = true;
       clearInterval(id);
+      pollOrdersRef.current = () => {};
     };
   }, [address, coin]);
 
@@ -385,6 +428,25 @@ export default function TradeWheel({
     return () => ro.disconnect();
   }, []);
 
+  useEffect(() => {
+    const onWake = () => {
+      if (document.visibilityState !== "visible") return;
+      const el = scrollRef.current;
+      if (el) setContainerHeight(el.clientHeight);
+      const reference = (following ? mark : scrollValue) ?? mark ?? initialPrice ?? 0;
+      windowStartRef.current = null;
+      scrollToPrice(reference);
+      pollTrailRef.current();
+      pollOrdersRef.current();
+    };
+    document.addEventListener("visibilitychange", onWake);
+    window.addEventListener("focus", onWake);
+    return () => {
+      document.removeEventListener("visibilitychange", onWake);
+      window.removeEventListener("focus", onWake);
+    };
+  }, [following, mark, scrollValue, initialPrice, scrollToPrice]);
+
   const rafRef = useRef<number | null>(null);
   const [, forceTickRefresh] = useState(0);
   const handleScroll = useCallback(() => {
@@ -529,14 +591,7 @@ export default function TradeWheel({
         .filter((x): x is { order: OpenOrder; top: number; px: number } => x != null);
 
   return (
-    <Widget>
-      <Widget.Header>
-        <Widget.Title>Trade &middot; {coin}</Widget.Title>
-        <Widget.Description className="flex items-center gap-1 font-mono">
-          Mark <NumberFlow format={moneyFormatOptions(mark ?? 0)} value={mark ?? 0} />
-        </Widget.Description>
-      </Widget.Header>
-      <Widget.Content className="p-0">
+    <>
         <div
           className="relative aspect-square min-h-[360px] w-full select-none overflow-hidden bg-surface"
           onPointerDown={handleTapReset}
@@ -770,7 +825,6 @@ export default function TradeWheel({
             )}
           </div>
         </div>
-      </Widget.Content>
 
       <Modal.Backdrop isOpen={priceDialog.isOpen} onOpenChange={priceDialog.setOpen}>
         <Modal.Container size="xs">
@@ -809,6 +863,6 @@ export default function TradeWheel({
       </Modal.Backdrop>
 
       {confirmDialog}
-    </Widget>
+    </>
   );
 }

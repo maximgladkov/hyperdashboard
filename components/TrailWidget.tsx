@@ -1,6 +1,7 @@
 "use client";
 
 import { StepperField } from "@/components/StepperField";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { moneyFormatOptions } from "@/lib/format";
 import { usePriceStep } from "@/lib/tradeSteps";
 import { useMarkPrice } from "@/lib/useMarkPrice";
@@ -154,94 +155,146 @@ export default function TrailWidget({ address }: { address: string }) {
         {managed !== true && <Widget.Description>Hyperliquid trailing-stop bot</Widget.Description>}
       </Widget.Header>
       <Widget.Content>
-        {managed === null && !fetchError && (
-          <div className="flex items-center gap-2 py-4 text-sm text-muted">
-            <Spinner size="sm" />
-            Checking trail bot…
-          </div>
-        )}
-
-        {fetchError && managed === null && (
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>Trail service unreachable</EmptyState.Title>
-              <EmptyState.Description>{fetchError}</EmptyState.Description>
-            </EmptyState.Header>
-          </EmptyState>
-        )}
-
-        {managed === false && (
-          <EmptyState size="sm">
-            <EmptyState.Header>
-              <EmptyState.Title>Not managed</EmptyState.Title>
-              <EmptyState.Description>This address isn&apos;t managed by the trail bot.</EmptyState.Description>
-            </EmptyState.Header>
-          </EmptyState>
-        )}
-
-        {managed === true && (
-          <div className="flex flex-col gap-4">
-            <Switch isSelected={localEnabled} onChange={handleEnabledChange} className="flex flex-row items-center justify-between gap-2">
-              Trailing enabled
-              <Switch.Content>
-                <Switch.Control>
-                  <Switch.Thumb />
-                </Switch.Control>
-              </Switch.Content>
-            </Switch>
-
-            <Separator />
-
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex flex-col gap-4">
-                {/* <Segment selectedKey={localType} size="sm" onSelectionChange={handleUnitChange}>
-                <Segment.Item id="pct">%</Segment.Item>
-                <Segment.Item id="abs">$</Segment.Item
-                >
-              </Segment> */}
-                {localType === "pct" ? (
-                  <StepperField
-                    aria-label="Trail distance percent"
-                    label="Trail distance"
-                    maxValue={PCT_MAX}
-                    minValue={PCT_MIN}
-                    size="sm"
-                    step={0.001}
-                    suffix="%"
-                    value={localPct}
-                    onChange={handlePctChange}
-                  />
-                ) : (
-                  <StepperField
-                    aria-label="Trail distance amount"
-                    group
-                    label="Trail distance"
-                    maxValue={ABS_MAX}
-                    minValue={ABS_MIN}
-                    prefix="$"
-                    step={priceStep}
-                    value={localAbs}
-                    valueClassName="mx-3 text-sm"
-                    onChange={handleAbsChange}
-                  />
-                )}
-              </div>
-
-              {priceToShow !== null && (
-                <div className="text-right">
-                  <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Mark price</div>
-                  <NumberFlow className="font-mono text-xl font-bold" format={moneyFormatOptions(priceToShow)} value={priceToShow} />
-                </div>
-              )}
-            </div>
-
-            <Separator />
-
-            <TrailSummary state={state} />
-          </div>
-        )}
+        <WidgetErrorBoundary label="Auto-trail">
+          <TrailWidgetBody
+            fetchError={fetchError}
+            localAbs={localAbs}
+            localEnabled={localEnabled}
+            localPct={localPct}
+            localType={localType}
+            managed={managed}
+            priceStep={priceStep}
+            priceToShow={priceToShow}
+            state={state}
+            onAbsChange={handleAbsChange}
+            onEnabledChange={handleEnabledChange}
+            onPctChange={handlePctChange}
+          />
+        </WidgetErrorBoundary>
       </Widget.Content>
     </Widget>
+  );
+}
+
+function TrailWidgetBody({
+  managed,
+  fetchError,
+  localEnabled,
+  localType,
+  localPct,
+  localAbs,
+  priceStep,
+  priceToShow,
+  state,
+  onEnabledChange,
+  onPctChange,
+  onAbsChange,
+}: {
+  managed: boolean | null;
+  fetchError: string | null;
+  localEnabled: boolean;
+  localType: TrailType;
+  localPct: number;
+  localAbs: number;
+  priceStep: number;
+  priceToShow: number | null;
+  state: TenantState | null;
+  onEnabledChange: (v: boolean) => void;
+  onPctChange: (v: number) => void;
+  onAbsChange: (v: number) => void;
+}) {
+  if (managed === null && !fetchError) {
+    return (
+      <div className="flex items-center gap-2 py-4 text-sm text-muted">
+        <Spinner size="sm" />
+        Checking trail bot…
+      </div>
+    );
+  }
+
+  if (fetchError && managed === null) {
+    return (
+      <EmptyState size="sm">
+        <EmptyState.Header>
+          <EmptyState.Title>Trail service unreachable</EmptyState.Title>
+          <EmptyState.Description>{fetchError}</EmptyState.Description>
+        </EmptyState.Header>
+      </EmptyState>
+    );
+  }
+
+  if (managed === false) {
+    return (
+      <EmptyState size="sm">
+        <EmptyState.Header>
+          <EmptyState.Title>Not managed</EmptyState.Title>
+          <EmptyState.Description>This address isn&apos;t managed by the trail bot.</EmptyState.Description>
+        </EmptyState.Header>
+      </EmptyState>
+    );
+  }
+
+  if (managed !== true) return null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Switch
+        className="flex flex-row items-center justify-between gap-2"
+        isSelected={localEnabled}
+        onChange={onEnabledChange}
+      >
+        Trailing enabled
+        <Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+        </Switch.Content>
+      </Switch>
+
+      <Separator />
+
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-col gap-4">
+          {localType === "pct" ? (
+            <StepperField
+              aria-label="Trail distance percent"
+              label="Trail distance"
+              maxValue={PCT_MAX}
+              minValue={PCT_MIN}
+              size="sm"
+              step={0.001}
+              suffix="%"
+              value={localPct}
+              onChange={onPctChange}
+            />
+          ) : (
+            <StepperField
+              aria-label="Trail distance amount"
+              group
+              label="Trail distance"
+              maxValue={ABS_MAX}
+              minValue={ABS_MIN}
+              prefix="$"
+              step={priceStep}
+              value={localAbs}
+              valueClassName="mx-3 text-sm"
+              onChange={onAbsChange}
+            />
+          )}
+        </div>
+
+        {priceToShow !== null && (
+          <div className="text-right">
+            <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Mark price</div>
+            <NumberFlow className="font-mono text-xl font-bold" format={moneyFormatOptions(priceToShow)} value={priceToShow} />
+          </div>
+        )}
+      </div>
+
+      <Separator />
+
+      <TrailSummary state={state} />
+    </div>
   );
 }
 

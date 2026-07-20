@@ -1,3 +1,4 @@
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { cls, fdate, moneyFormatOptions, usd } from "@/lib/format";
 import { Widget } from "@heroui-pro/react";
 import { Separator } from "@heroui/react";
@@ -27,52 +28,74 @@ export default function CapitalFlows({
         <Widget.Description>{wLbl}</Widget.Description>
       </Widget.Header>
       <Widget.Content>
-        <div className="flex flex-wrap gap-5">
-          <div>
-            <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">In</div>
-            <NumberFlow className="mt-1 font-mono text-lg font-bold" format={moneyFormatOptions(dep)} value={dep} />
-            <div className="text-xs text-muted">{depN} deposits &amp; transfers in</div>
-          </div>
-          <div>
-            <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Out</div>
-            <NumberFlow className="mt-1 font-mono text-lg font-bold" format={moneyFormatOptions(wd)} value={wd} />
-            <div className="text-xs text-muted">{wdN} withdrawals &amp; transfers out</div>
-          </div>
-          <div>
-            <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Net flow</div>
-            <NumberFlow
-              className={`mt-1 font-mono text-lg font-bold ${cls(dep - wd)}`}
-              format={moneyFormatOptions(dep - wd, true)}
-              value={dep - wd}
-            />
-            <div className="text-xs text-muted">in &minus; out</div>
-          </div>
-        </div>
-        {recent.length > 0 && (
-          <>
-            <Separator className="mt-3" />
-            <div className="flex flex-col">
-              {recent.slice(0, 6).map((r, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between gap-3 border-b border-border py-2.5 last:border-b-0"
-                >
-                  <div>
-                    <span className="text-sm">{r.kind}</span>
-                    <div className="font-mono text-xs text-muted">
-                      {fdate(r.t)}
-                      {r.fee ? ` \u00b7 fee ${usd(r.fee)}` : ""}
-                      {r.to ? ` \u00b7 to ${r.to.slice(0, 6)}\u2026${r.to.slice(-4)}` : ""}
-                    </div>
-                  </div>
-                  <div className="font-mono font-semibold text-danger">&minus;{usd(r.amt)}</div>
-                </div>
-              ))}
-              {wdN > 6 && <div className="pt-2 text-xs text-muted">+ {wdN - 6} earlier outflows</div>}
-            </div>
-          </>
-        )}
+        <WidgetErrorBoundary label="Capital flows">
+          <CapitalFlowsBody dep={dep} depN={depN} recent={recent} wd={wd} wdN={wdN} />
+        </WidgetErrorBoundary>
       </Widget.Content>
     </Widget>
+  );
+}
+
+function CapitalFlowsBody({
+  dep,
+  depN,
+  wd,
+  wdN,
+  recent,
+}: {
+  dep: number;
+  depN: number;
+  wd: number;
+  wdN: number;
+  recent: RecentFlow[];
+}) {
+  return (
+    <>
+      <div className="flex flex-wrap gap-5">
+        <div>
+          <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">In</div>
+          <NumberFlow className="mt-1 font-mono text-lg font-bold" format={moneyFormatOptions(dep)} value={dep} />
+          <div className="text-xs text-muted">{depN} deposits &amp; transfers in</div>
+        </div>
+        <div>
+          <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Out</div>
+          <NumberFlow className="mt-1 font-mono text-lg font-bold" format={moneyFormatOptions(wd)} value={wd} />
+          <div className="text-xs text-muted">{wdN} withdrawals &amp; transfers out</div>
+        </div>
+        <div>
+          <div className="font-mono text-[10px] tracking-[.14em] text-muted uppercase">Net flow</div>
+          <NumberFlow
+            className={`mt-1 font-mono text-lg font-bold ${cls(dep - wd)}`}
+            format={moneyFormatOptions(dep - wd, true)}
+            value={dep - wd}
+          />
+          <div className="text-xs text-muted">in &minus; out</div>
+        </div>
+      </div>
+      {recent.length > 0 && (
+        <>
+          <Separator className="mt-3" />
+          <div className="flex flex-col">
+            {recent.slice(0, 6).map((r, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between gap-3 border-b border-border py-2.5 last:border-b-0"
+              >
+                <div>
+                  <span className="text-sm">{r.kind}</span>
+                  <div className="font-mono text-xs text-muted">
+                    {fdate(r.t)}
+                    {r.fee ? ` \u00b7 fee ${usd(r.fee)}` : ""}
+                    {r.to ? ` \u00b7 to ${r.to.slice(0, 6)}\u2026${r.to.slice(-4)}` : ""}
+                  </div>
+                </div>
+                <div className="font-mono font-semibold text-danger">&minus;{usd(r.amt)}</div>
+              </div>
+            ))}
+            {wdN > 6 && <div className="pt-2 text-xs text-muted">+ {wdN - 6} earlier outflows</div>}
+          </div>
+        </>
+      )}
+    </>
   );
 }

@@ -11,7 +11,6 @@ import Positions from "@/components/Positions";
 import StatsStrip from "@/components/StatsStrip";
 import TradeWheel from "@/components/TradeWheel";
 import TrailWidget from "@/components/TrailWidget";
-import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import {
   PERIODS,
   accountBreakdown,
@@ -48,6 +47,7 @@ const DEFAULT_ADDR = "0x78e497a06B12d767371389EbD04baF7C8225a98b";
 const ADDR_STORAGE_KEY = "hlpnl:addr";
 const STALE_MS = 60 * 1000;
 const SNAPSHOT_POLL_MS = 30 * 1000;
+const RESUME_REMOUNT_MS = 30 * 1000;
 
 type State = {
   D: AppData | null;
@@ -248,6 +248,9 @@ export default function Dashboard() {
     loadRef.current(saved || DEFAULT_ADDR);
   }, []);
 
+  const [resumeEpoch, setResumeEpoch] = useState(0);
+  const hiddenAtRef = useRef<number | null>(null);
+
   useEffect(() => {
     const maybeRefresh = () => {
       const cur = stateRef.current;
@@ -255,11 +258,25 @@ export default function Dashboard() {
         loadRef.current(cur.currentUser);
       }
     };
+    const maybeRemount = () => {
+      const hiddenAt = hiddenAtRef.current;
+      hiddenAtRef.current = null;
+      if (hiddenAt == null || Date.now() - hiddenAt < RESUME_REMOUNT_MS) return;
+      setResumeEpoch((n) => n + 1);
+    };
     const onVisibility = () => {
-      if (document.visibilityState === "visible") maybeRefresh();
+      if (document.visibilityState === "hidden") {
+        hiddenAtRef.current = Date.now();
+        return;
+      }
+      maybeRemount();
+      maybeRefresh();
     };
     const onPageShow = (e: PageTransitionEvent) => {
-      if (e.persisted) maybeRefresh();
+      if (!e.persisted) return;
+      hiddenAtRef.current = null;
+      setResumeEpoch((n) => n + 1);
+      maybeRefresh();
     };
     document.addEventListener("visibilitychange", onVisibility);
     window.addEventListener("pageshow", onPageShow);
@@ -424,46 +441,29 @@ export default function Dashboard() {
           onRangeChange={handleRangeChange}
         />
         <div className="order-1 flex flex-col gap-4 lg:order-2 lg:w-[400px] lg:shrink-0">
-          <WidgetErrorBoundary label="Trade wheel">
-            <TradeWheel
-              address={state.currentUser!}
-              clearing={D.clearing}
-              coin={positions[0]?.coin ?? "BTC"}
-            />
-          </WidgetErrorBoundary>
-          <WidgetErrorBoundary label="Open positions">
-            <Positions positions={positions} address={state.currentUser!} />
-          </WidgetErrorBoundary>
-          <WidgetErrorBoundary key={`orders-${state.currentUser}`} label="Open orders">
-            <OpenOrders address={state.currentUser!} />
-          </WidgetErrorBoundary>
-          <WidgetErrorBoundary key={state.currentUser} label="Auto-trail">
-            <TrailWidget address={state.currentUser!} />
-          </WidgetErrorBoundary>
-          <WidgetErrorBoundary label="Funding">
-            <FundingPanel fundTot={fundTot} fundingCount={activeFunding.length} wLbl={wLbl} />
-          </WidgetErrorBoundary>
-          <WidgetErrorBoundary label="Capital flows">
-            <CapitalFlows
-              dep={flows.dep}
-              depN={flows.depN}
-              wd={flows.wd}
-              wdN={flows.wdN}
-              recent={flows.recent}
-              wLbl={wLbl}
-            />
-          </WidgetErrorBoundary>
+          <TradeWheel
+            key={`wheel-${resumeEpoch}`}
+            address={state.currentUser!}
+            clearing={D.clearing}
+            coin={positions[0]?.coin ?? "BTC"}
+          />
+          <Positions key={`positions-${resumeEpoch}`} address={state.currentUser!} positions={positions} />
+          <OpenOrders key={`orders-${state.currentUser}-${resumeEpoch}`} address={state.currentUser!} />
+          <TrailWidget key={state.currentUser} address={state.currentUser!} />
+          <FundingPanel fundTot={fundTot} fundingCount={activeFunding.length} wLbl={wLbl} />
+          <CapitalFlows
+            dep={flows.dep}
+            depN={flows.depN}
+            recent={flows.recent}
+            wd={flows.wd}
+            wdN={flows.wdN}
+            wLbl={wLbl}
+          />
         </div>
         <div className="order-3 flex min-w-0 flex-1 flex-col gap-4">
-          <WidgetErrorBoundary label="Chart">
-            <ChartPanel metric={state.metric} period={state.period} wLbl={wLbl} series={series} />
-          </WidgetErrorBoundary>
-          <WidgetErrorBoundary label="Flows">
-            <FlowsPanel buckets={bk.arr} daily={bk.daily} wLbl={wLbl} />
-          </WidgetErrorBoundary>
-          <WidgetErrorBoundary label="Market table">
-            <MarketTable coins={coins} totR={totR} totF={totF} nTrades={nTrades} wLbl={wLbl} />
-          </WidgetErrorBoundary>
+          <ChartPanel metric={state.metric} period={state.period} series={series} wLbl={wLbl} />
+          <FlowsPanel buckets={bk.arr} daily={bk.daily} wLbl={wLbl} />
+          <MarketTable coins={coins} nTrades={nTrades} totF={totF} totR={totR} wLbl={wLbl} />
         </div>
       </div>
       <footer className="mt-2 max-w-2xl text-xs leading-relaxed text-muted">

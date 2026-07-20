@@ -1,6 +1,7 @@
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { cls, moneyFormatOptions } from "@/lib/format";
 import { Widget } from "@heroui-pro/react";
 import NumberFlow from "@number-flow/react";
-import { cls, moneyFormatOptions } from "@/lib/format";
 
 export default function FundingPanel({
   fundTot,
@@ -18,9 +19,19 @@ export default function FundingPanel({
         <Widget.Description>{wLbl}</Widget.Description>
       </Widget.Header>
       <Widget.Content>
-        <NumberFlow className={`text-2xl font-bold ${cls(fundTot)}`} format={moneyFormatOptions(fundTot, true)} value={fundTot} />
-        <div className="mt-1 text-xs text-muted">{fundingCount} funding payments &middot; net paid/received</div>
+        <WidgetErrorBoundary label="Funding">
+          <FundingBody fundTot={fundTot} fundingCount={fundingCount} />
+        </WidgetErrorBoundary>
       </Widget.Content>
     </Widget>
+  );
+}
+
+function FundingBody({ fundTot, fundingCount }: { fundTot: number; fundingCount: number }) {
+  return (
+    <>
+      <NumberFlow className={`text-2xl font-bold ${cls(fundTot)}`} format={moneyFormatOptions(fundTot, true)} value={fundTot} />
+      <div className="mt-1 text-xs text-muted">{fundingCount} funding payments &middot; net paid/received</div>
+    </>
   );
 }
