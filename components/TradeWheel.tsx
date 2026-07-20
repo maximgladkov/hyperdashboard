@@ -483,6 +483,7 @@ export default function TradeWheel({
     }
   }, [address, reducing, positionSide, positionSize, following, value, coin, reduceOrder]);
 
+  const hasPrice = value != null || mark != null;
   const effectiveValue = value ?? mark ?? 0;
   const isLong = mark == null || effectiveValue <= mark;
   const liquidationPx = existingPosition?.liquidationPx != null ? +existingPosition.liquidationPx : null;
@@ -624,20 +625,22 @@ export default function TradeWheel({
 
           <div className="pointer-events-none absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 bg-white/30" />
 
-          <div className="absolute top-1/2 left-4 z-10 -translate-y-1/2" onPointerDown={(e) => e.stopPropagation()}>
-            <button
-              aria-label="Set limit price"
-              className={`flex cursor-pointer items-center justify-center rounded-full px-3 py-0 shadow-field outline-none transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
-              type="button"
-              onClick={openPriceDialog}
-            >
-              <NumberFlow
-                className="text-3xl font-bold tabular-nums text-foreground"
-                format={moneyFormatOptions(effectiveValue)}
-                value={effectiveValue}
-              />
-            </button>
-          </div>
+          {hasPrice && (
+            <div className="absolute top-1/2 left-4 z-10 -translate-y-1/2" onPointerDown={(e) => e.stopPropagation()}>
+              <button
+                aria-label="Set limit price"
+                className={`flex cursor-pointer items-center justify-center rounded-full px-3 py-0 shadow-field outline-none transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
+                type="button"
+                onClick={openPriceDialog}
+              >
+                <NumberFlow
+                  className="text-3xl font-bold tabular-nums text-foreground"
+                  format={moneyFormatOptions(effectiveValue)}
+                  value={effectiveValue}
+                />
+              </button>
+            </div>
+          )}
 
           <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-2" onPointerDown={(e) => e.stopPropagation()}>
             <StepperField
