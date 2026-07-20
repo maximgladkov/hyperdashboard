@@ -64,7 +64,7 @@ export function useConfirm() {
           <Modal.Header>
             <Modal.Heading>{options?.title}</Modal.Heading>
           </Modal.Header>
-          {options?.body != null && <Modal.Body className="pt-1">{options.body}</Modal.Body>}
+          {options?.body != null && <Modal.Body className="pt-1 text-md">{options.body}</Modal.Body>}
           <Modal.Footer>
             <Button fullWidth style={isSuccess ? SUCCESS_BUTTON_STYLE : undefined} variant={confirmVariant}>
               <PressableFeedback.HoldConfirm className={holdClassName} duration={HOLD_MS} onComplete={handleConfirm}>
