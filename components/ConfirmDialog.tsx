@@ -40,6 +40,10 @@ export function useConfirm() {
     [state]
   );
 
+  const updateBody = useCallback((body: ReactNode) => {
+    setOptions((prev) => (prev ? { ...prev, body } : prev));
+  }, []);
+
   const handleConfirm = useCallback(() => {
     state.close();
     actionRef.current();
@@ -78,5 +82,5 @@ export function useConfirm() {
     </Modal.Backdrop>
   );
 
-  return { confirm, dialog };
+  return { confirm, updateBody, isOpen: state.isOpen, dialog };
 }

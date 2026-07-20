@@ -170,7 +170,8 @@ export default function TradeWheel({
   const [priceStep] = usePriceStep();
   const priceDialog = useOverlayState();
   const [priceDraft, setPriceDraft] = useState<number | null>(null);
-  const { confirm, dialog: confirmDialog } = useConfirm();
+  const [pendingConfirmSide, setPendingConfirmSide] = useState<"buy" | "sell" | null>(null);
+  const { confirm, updateBody: updateConfirmBody, isOpen: confirmIsOpen, dialog: confirmDialog } = useConfirm();
 
   const value = following ? mark : scrollValue;
 
@@ -289,6 +290,24 @@ export default function TradeWheel({
 
   const estimatedLiqBuy = useMemo(() => estimateLiqFor("buy"), [estimateLiqFor]);
   const estimatedLiqSell = useMemo(() => estimateLiqFor("sell"), [estimateLiqFor]);
+
+  useEffect(() => {
+    if (!confirmIsOpen) setPendingConfirmSide(null);
+  }, [confirmIsOpen]);
+
+  useEffect(() => {
+    if (pendingConfirmSide == null || !following) return;
+    updateConfirmBody(
+      confirmBody({
+        orderType: "Market order",
+        size,
+        coin,
+        price: mark,
+        isMarket: true,
+        estimatedLiq: pendingConfirmSide === "buy" ? estimatedLiqBuy : estimatedLiqSell,
+      })
+    );
+  }, [pendingConfirmSide, following, mark, size, coin, estimatedLiqBuy, estimatedLiqSell, updateConfirmBody]);
 
   const step = priceStep;
 
@@ -679,7 +698,8 @@ export default function TradeWheel({
                   variant="success"
                   isDisabled={!address || (pending != null && pending !== "buy")}
                   isPending={pending === "buy"}
-                  onPress={() =>
+                  onPress={() => {
+                    setPendingConfirmSide("buy");
                     confirm(() => submitOrder("buy"), {
                       title: "Confirm long",
                       body: confirmBody({
@@ -692,8 +712,8 @@ export default function TradeWheel({
                       }),
                       confirmLabel: "Long",
                       confirmVariant: "success",
-                    })
-                  }
+                    });
+                  }}
                 >
                   Long
                 </ActionButton>
@@ -701,7 +721,8 @@ export default function TradeWheel({
                   variant="danger"
                   isDisabled={!address || (pending != null && pending !== "sell")}
                   isPending={pending === "sell"}
-                  onPress={() =>
+                  onPress={() => {
+                    setPendingConfirmSide("sell");
                     confirm(() => submitOrder("sell"), {
                       title: "Confirm short",
                       body: confirmBody({
@@ -714,8 +735,8 @@ export default function TradeWheel({
                       }),
                       confirmLabel: "Short",
                       confirmVariant: "danger",
-                    })
-                  }
+                    });
+                  }}
                 >
                   <ButtonGroup.Separator />
                   Short
