@@ -54,11 +54,12 @@ export function estimateLiquidationPrice(input: LiqInput): number | null {
   breakpoints.sort((a, b) => (sideSign > 0 ? b.price - a.price : a.price - b.price));
 
   for (const bp of breakpoints) {
-    if (size === 0) break;
-    const candidate = candidateLiqPrice(size, notionalSum, leverage, l);
-    if (candidate == null) return null;
-    const reachedFirst = sideSign > 0 ? candidate >= bp.price : candidate <= bp.price;
-    if (reachedFirst) return candidate;
+    if (size !== 0) {
+      const candidate = candidateLiqPrice(size, notionalSum, leverage, l);
+      if (candidate == null) return null;
+      const reachedFirst = sideSign > 0 ? candidate >= bp.price : candidate <= bp.price;
+      if (reachedFirst) return candidate;
+    }
 
     size += sideSign * bp.size;
     notionalSum += bp.size * bp.price;

@@ -16,6 +16,7 @@ import { NumberValue, Widget } from "@heroui-pro/react";
 import type { ButtonProps } from "@heroui/react";
 import { Button, ButtonGroup, Card, Description, Modal, toast, useOverlayState } from "@heroui/react";
 import NumberFlow from "@number-flow/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -23,9 +24,18 @@ const POSITION_POLL_MS = 3000;
 const ORDERS_POLL_MS = 5000;
 const DOUBLE_TAP_MS = 300;
 const PIXELS_PER_STEP = 32;
-const RULER_TICKS = 28;
 const MAJOR_EVERY = 2;
-const RULER_WIDTH_PX = 64;
+const VIRTUAL_COUNT = 500_000;
+const VIRTUAL_CENTER = VIRTUAL_COUNT / 2;
+const RECENTER_MARGIN = 50_000;
+
+function scrollTopForIndex(index: number): number {
+  return index * PIXELS_PER_STEP + PIXELS_PER_STEP / 2;
+}
+
+function indexForScrollTop(scrollTop: number): number {
+  return (scrollTop - PIXELS_PER_STEP / 2) / PIXELS_PER_STEP;
+}
 
 function formatTick(v: number, decimals: number): string {
   return v.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
@@ -133,8 +143,6 @@ async function fetchTrailState(address: string): Promise<TrailStateResponse> {
   return r.json();
 }
 
-type DragState = { startY: number; startValue: number };
-
 export default function TradeWheel({
   coin,
   initialPrice,
@@ -147,9 +155,9 @@ export default function TradeWheel({
   clearing?: ClearinghouseState;
 }) {
   const mark = useMarkPrice(coin, initialPrice ?? null);
-  const [heldValue, setHeldValue] = useState<number | null>(initialPrice ?? null);
+  const [scrollValue, setScrollValue] = useState<number | null>(initialPrice ?? null);
   const [following, setFollowing] = useState(true);
-  const [isDragging, setIsDragging] = useState(false);
+  const [containerHeight, setContainerHeight] = useState(0);
   const [entryPx, setEntryPx] = useState<number | null>(null);
   const [stopPx, setStopPx] = useState<number | null>(null);
   const [positionSize, setPositionSize] = useState<number | null>(null);
@@ -164,10 +172,13 @@ export default function TradeWheel({
   const [priceDraft, setPriceDraft] = useState<number | null>(null);
   const { confirm, dialog: confirmDialog } = useConfirm();
 
-  const value = following ? mark : heldValue;
+  const value = following ? mark : scrollValue;
 
-  const dragRef = useRef<DragState | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const windowStartRef = useRef<number | null>(null);
   const lastTapRef = useRef(0);
+  const prevCoinRef = useRef<string | null>(null);
+  const prevStepRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!address) {
@@ -281,10 +292,37 @@ export default function TradeWheel({
 
   const step = priceStep;
 
+  // Content index ascends downward (native scroll order), but price ascends upward
+  // (matching the mark/entry/stop/order line convention), so price = step * (windowStart - contentIndex).
+  const scrollToPrice = useCallback((price: number, opts?: { smooth?: boolean }) => {
+    const priceIndex = price / step;
+    let start = windowStartRef.current;
+    let contentIndex = start == null ? null : start - priceIndex;
+    if (
+      start == null ||
+      contentIndex == null ||
+      contentIndex < RECENTER_MARGIN ||
+      contentIndex > VIRTUAL_COUNT - RECENTER_MARGIN
+    ) {
+      start = VIRTUAL_CENTER + Math.round(priceIndex);
+      windowStartRef.current = start;
+      contentIndex = start - priceIndex;
+    }
+    const el = scrollRef.current;
+    const top = scrollTopForIndex(contentIndex);
+    if (el) {
+      if (opts?.smooth) el.scrollTo({ top, behavior: "smooth" });
+      else el.scrollTop = top;
+    }
+    setScrollValue(price);
+  }, [step]);
+
+  const pendingSmoothResetRef = useRef(false);
+
   const handleReset = useCallback(() => {
+    pendingSmoothResetRef.current = true;
     setFollowing(true);
-    if (mark != null) setHeldValue(mark);
-  }, [mark]);
+  }, []);
 
   const openPriceDialog = useCallback(() => {
     setPriceDraft(null);
@@ -294,10 +332,90 @@ export default function TradeWheel({
   const confirmPrice = useCallback(() => {
     if (priceDraft != null) {
       setFollowing(false);
-      setHeldValue(priceDraft);
+      scrollToPrice(priceDraft);
     }
     priceDialog.close();
-  }, [priceDraft, priceDialog]);
+  }, [priceDraft, priceDialog, scrollToPrice]);
+
+  useEffect(() => {
+    if (!following || mark == null) return;
+    const smooth = pendingSmoothResetRef.current;
+    pendingSmoothResetRef.current = false;
+    scrollToPrice(mark, { smooth });
+  }, [following, mark, scrollToPrice]);
+
+  useEffect(() => {
+    const coinChanged = prevCoinRef.current !== coin;
+    const stepChanged = prevStepRef.current !== step;
+    prevCoinRef.current = coin;
+    prevStepRef.current = step;
+    if (!coinChanged && !stepChanged) return;
+    windowStartRef.current = null;
+    if (coinChanged) setFollowing(true);
+    const reference =
+      (coinChanged ? null : following ? mark : scrollValue) ?? mark ?? initialPrice ?? 0;
+    scrollToPrice(reference);
+    // Only re-run when the coin or step identity changes; reads latest mark/following/scrollValue from closure.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coin, step]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver((entries) => {
+      setContainerHeight(entries[0]?.contentRect.height ?? el.clientHeight);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const rafRef = useRef<number | null>(null);
+  const [, forceTickRefresh] = useState(0);
+  const handleScroll = useCallback(() => {
+    if (rafRef.current != null) return;
+    rafRef.current = requestAnimationFrame(() => {
+      rafRef.current = null;
+      const el = scrollRef.current;
+      const start = windowStartRef.current;
+      if (!el || start == null) return;
+      const contentIndex = indexForScrollTop(el.scrollTop);
+      setScrollValue((start - contentIndex) * step);
+      if (contentIndex < RECENTER_MARGIN || contentIndex > VIRTUAL_COUNT - RECENTER_MARGIN) {
+        const shift = Math.round(contentIndex - VIRTUAL_CENTER);
+        if (shift !== 0) {
+          windowStartRef.current = start - shift;
+          el.scrollTop -= shift * PIXELS_PER_STEP;
+          forceTickRefresh((n) => n + 1);
+        }
+      }
+    });
+  }, [step]);
+
+  const exitFollowing = useCallback(() => {
+    if (following) setFollowing(false);
+  }, [following]);
+
+  const handleTapReset = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const now = e.timeStamp;
+      if (now - lastTapRef.current < DOUBLE_TAP_MS) {
+        lastTapRef.current = 0;
+        handleReset();
+      } else {
+        lastTapRef.current = now;
+      }
+    },
+    [handleReset]
+  );
+
+  const virtualizer = useVirtualizer({
+    count: VIRTUAL_COUNT,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => PIXELS_PER_STEP,
+    overscan: 6,
+    paddingStart: containerHeight / 2,
+    paddingEnd: containerHeight / 2,
+  });
 
   const submitOrder = useCallback(
     async (side: "buy" | "sell") => {
@@ -358,71 +476,33 @@ export default function TradeWheel({
     }
   }, [address, reducing, positionSide, positionSize, following, value, coin, reduceOrder]);
 
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      const now = e.timeStamp;
-      if (now - lastTapRef.current < DOUBLE_TAP_MS) {
-        lastTapRef.current = 0;
-        handleReset();
-        return;
-      }
-      lastTapRef.current = now;
-      e.currentTarget.setPointerCapture(e.pointerId);
-      setFollowing(false);
-      setIsDragging(true);
-      dragRef.current = {
-        startY: e.clientY,
-        startValue: value ?? mark ?? 0,
-      };
-    },
-    [value, mark, handleReset]
-  );
-
-  const handlePointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      const dyTotal = e.clientY - drag.startY;
-      setHeldValue(drag.startValue + (dyTotal / PIXELS_PER_STEP) * step);
-    },
-    [step]
-  );
-
-  const handlePointerUp = useCallback(() => {
-    dragRef.current = null;
-    setIsDragging(false);
-  }, []);
-
-  const centerIndex = value != null ? Math.round(value / step) : 0;
-  const ticks = useMemo(() => {
-    const arr: { idx: number; tickValue: number; major: boolean }[] = [];
-    for (let k = -RULER_TICKS; k <= RULER_TICKS; k++) {
-      const idx = centerIndex + k;
-      arr.push({ idx, tickValue: idx * step, major: idx % MAJOR_EVERY === 0 });
-    }
-    return arr;
-  }, [centerIndex, step]);
-
   const effectiveValue = value ?? mark ?? 0;
   const isLong = mark == null || effectiveValue <= mark;
-  const markOffset = mark != null && value != null ? ((value - mark) / step) * PIXELS_PER_STEP : 0;
-  const entryOffset = entryPx != null && value != null ? ((value - entryPx) / step) * PIXELS_PER_STEP : null;
-  const stopOffset = stopPx != null && value != null ? ((value - stopPx) / step) * PIXELS_PER_STEP : null;
   const liquidationPx = existingPosition?.liquidationPx != null ? +existingPosition.liquidationPx : null;
-  const liqOffset = liquidationPx != null && value != null ? ((value - liquidationPx) / step) * PIXELS_PER_STEP : null;
 
-  const orderLines = useMemo(() => {
-    if (value == null) return [];
-    return orders
-      .map((o) => {
-        const px = orderPrice(o);
-        if (!px) return null;
-        const offset = ((value - px) / step) * PIXELS_PER_STEP;
-        if (Math.abs(offset) > 260) return null;
-        return { order: o, offset, px };
-      })
-      .filter((x): x is { order: OpenOrder; offset: number; px: number } => x != null);
-  }, [orders, value, step]);
+  // Content-relative top (matches the virtualizer's own item.start + paddingStart), so lines
+  // scroll natively with the ticks instead of chasing scroll-derived React state every frame.
+  const windowStart = windowStartRef.current ?? 0;
+  const halfHeight = containerHeight / 2;
+  const contentTop = (price: number) => halfHeight + scrollTopForIndex(windowStart - price / step);
+
+  const markTop = mark != null ? contentTop(mark) : null;
+  const entryTop = entryPx != null ? contentTop(entryPx) : null;
+  const stopTop = stopPx != null ? contentTop(stopPx) : null;
+  const liqTop = liquidationPx != null ? contentTop(liquidationPx) : null;
+
+  const orderLines =
+    value == null
+      ? []
+      : orders
+        .map((o) => {
+          const px = orderPrice(o);
+          if (!px) return null;
+          const offset = ((value - px) / step) * PIXELS_PER_STEP;
+          if (Math.abs(offset) > 260) return null;
+          return { order: o, top: contentTop(px), px };
+        })
+        .filter((x): x is { order: OpenOrder; top: number; px: number } => x != null);
 
   return (
     <Widget>
@@ -434,120 +514,108 @@ export default function TradeWheel({
       </Widget.Header>
       <Widget.Content className="p-0">
         <div
-          className={`relative aspect-square min-h-[360px] w-full touch-none select-none overflow-hidden bg-surface ${isDragging ? "cursor-grabbing" : "cursor-grab"}`}
-          onPointerCancel={handlePointerUp}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
+          className="relative aspect-square min-h-[360px] w-full select-none overflow-hidden bg-surface"
+          onPointerDown={handleTapReset}
+          onTouchStart={exitFollowing}
+          onWheel={exitFollowing}
         >
-          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 bg-white/30" />
-
-          {!following && mark != null && value != null && (
-            <div
-              className="pointer-events-none absolute inset-x-0 top-1/2 z-[5] border-t border-dashed border-accent/60"
-              style={{
-                transform: `translateY(${markOffset}px)`,
-                transition: isDragging ? "none" : "transform 300ms ease-out",
-              }}
-            >
-              <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-accent px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-accent-foreground">
-                MARK <span className="tabular-nums">{usd(mark)}</span>
-              </span>
-            </div>
-          )}
-
-          {entryOffset != null && (
-            <div
-              className="pointer-events-none absolute inset-x-0 top-1/2 z-[4] border-t border-dashed border-sky-400/60"
-              style={{
-                transform: `translateY(${entryOffset}px)`,
-                transition: isDragging ? "none" : "transform 300ms ease-out",
-              }}
-            >
-              <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-sky-400 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black">
-                ENTRY
-                {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
-                @ <span className="tabular-nums">{usd(entryPx)}</span>
-              </span>
-            </div>
-          )}
-
-          {stopOffset != null && (
-            <div
-              className="pointer-events-none absolute inset-x-0 top-1/2 z-[4] border-t border-dashed border-danger/70"
-              style={{
-                transform: `translateY(${stopOffset}px)`,
-                transition: isDragging ? "none" : "transform 300ms ease-out",
-              }}
-            >
-              <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-danger px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-danger-foreground">
-                STOP
-                {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
-                @ <span className="tabular-nums">{usd(stopPx)}</span>
-              </span>
-            </div>
-          )}
-
-          {liqOffset != null && (
-            <div
-              className="pointer-events-none absolute inset-x-0 top-1/2 z-[4] border-t-2 border-solid border-red-600"
-              style={{
-                transform: `translateY(${liqOffset}px)`,
-                transition: isDragging ? "none" : "transform 300ms ease-out",
-              }}
-            >
-              <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-red-600 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-white">
-                LIQ <span className="tabular-nums">{usd(liquidationPx)}</span>
-              </span>
-            </div>
-          )}
-
-          {orderLines.map(({ order, offset, px }) => {
-            const isBuy = order.side === "B";
-            return (
-              <div
-                key={order.oid}
-                className={`pointer-events-none absolute inset-x-0 top-1/2 z-[3] border-t border-dashed ${isBuy ? "border-cyan-400/60" : "border-orange-400/60"}`}
-                style={{
-                  transform: `translateY(${offset}px)`,
-                  transition: isDragging ? "none" : "transform 300ms ease-out",
-                }}
-              >
-                <span
-                  className={`absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black ${isBuy ? "bg-cyan-400" : "bg-orange-400"}`}
-                >
-                  {isBuy ? "BUY" : "SELL"} {orderLabel(order)}
-                  <span className="tabular-nums">{formatSize(+order.sz)}</span>
-                  @ <span className="tabular-nums">{usd(px)}</span>
-                </span>
-              </div>
-            );
-          })}
-
           <div
-            className="pointer-events-none absolute inset-y-0 right-0 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_12%,black_88%,transparent)]"
-            style={{ width: RULER_WIDTH_PX }}
+            ref={scrollRef}
+            className="absolute inset-0 z-[1] overflow-x-hidden overflow-y-scroll overscroll-contain [mask-image:linear-gradient(to_bottom,transparent,black_12%,black_88%,transparent)] [&::-webkit-scrollbar]:hidden"
+            style={{ scrollbarWidth: "none" }}
+            onScroll={handleScroll}
           >
-            {ticks.map(({ idx, tickValue, major }) => {
-              const offset = value == null ? 0 : ((value - tickValue) / step) * PIXELS_PER_STEP;
-              if (Math.abs(offset) > 260) return null;
-              return (
+            <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+              {virtualizer.getVirtualItems().map((item) => {
+                const absIndex = windowStart - item.index;
+                const tickValue = absIndex * step;
+                const major = absIndex % MAJOR_EVERY === 0;
+                return (
+                  <div
+                    key={item.key}
+                    className="absolute inset-x-0 top-0 flex items-center justify-end gap-1.5"
+                    style={{ height: item.size, transform: `translateY(${item.start}px)` }}
+                  >
+                    {major && (
+                      <span className="font-mono text-[10px] tabular-nums text-muted">
+                        {formatTick(tickValue, 0)}
+                      </span>
+                    )}
+                    <span className={major ? "h-[2px] w-4 bg-foreground/50" : "h-px w-2.5 bg-foreground/25"} />
+                  </div>
+                );
+              })}
+
+              {!following && markTop != null && (
                 <div
-                  key={idx}
-                  className="absolute right-0 top-1/2 flex items-center justify-end gap-1.5"
-                  style={{
-                    transform: `translateY(calc(-50% + ${offset}px))`,
-                    transition: isDragging ? "none" : "transform 300ms ease-out",
-                  }}
+                  className="pointer-events-none absolute inset-x-0 z-[5] border-t border-dashed border-accent/60"
+                  style={{ top: markTop }}
                 >
-                  {major && (
-                    <span className="font-mono text-[10px] tabular-nums text-muted">{formatTick(tickValue, 0)}</span>
-                  )}
-                  <span className={major ? "h-[2px] w-4 bg-foreground/50" : "h-px w-2.5 bg-foreground/25"} />
+                  <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-accent px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-accent-foreground">
+                    MARK <span className="tabular-nums">{usd(mark)}</span>
+                  </span>
                 </div>
-              );
-            })}
+              )}
+
+              {entryTop != null && (
+                <div
+                  className="pointer-events-none absolute inset-x-0 z-[4] border-t border-dashed border-sky-400/60"
+                  style={{ top: entryTop }}
+                >
+                  <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-sky-400 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black">
+                    ENTRY
+                    {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
+                    @ <span className="tabular-nums">{usd(entryPx)}</span>
+                  </span>
+                </div>
+              )}
+
+              {stopTop != null && (
+                <div
+                  className="pointer-events-none absolute inset-x-0 z-[4] border-t border-dashed border-danger/70"
+                  style={{ top: stopTop }}
+                >
+                  <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-danger px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-danger-foreground">
+                    STOP
+                    {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
+                    @ <span className="tabular-nums">{usd(stopPx)}</span>
+                  </span>
+                </div>
+              )}
+
+              {liqTop != null && (
+                <div
+                  className="pointer-events-none absolute inset-x-0 z-[4] border-t-2 border-solid border-red-600"
+                  style={{ top: liqTop }}
+                >
+                  <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-red-600 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-white">
+                    LIQ <span className="tabular-nums">{usd(liquidationPx)}</span>
+                  </span>
+                </div>
+              )}
+
+              {orderLines.map(({ order, top, px }) => {
+                const isBuy = order.side === "B";
+                return (
+                  <div
+                    key={order.oid}
+                    className={`pointer-events-none absolute inset-x-0 z-[3] border-t border-dashed ${isBuy ? "border-cyan-400/60" : "border-orange-400/60"}`}
+                    style={{ top }}
+                  >
+                    <span
+                      className={`absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black ${isBuy ? "bg-cyan-400" : "bg-orange-400"}`}
+                    >
+                      {isBuy ? "BUY" : "SELL"} {orderLabel(order)}
+                      <span className="tabular-nums">{formatSize(+order.sz)}</span>
+                      @ <span className="tabular-nums">{usd(px)}</span>
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           </div>
+
+          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 bg-white/30" />
 
           <div className="absolute top-1/2 left-4 z-10 -translate-y-1/2" onPointerDown={(e) => e.stopPropagation()}>
             <button
@@ -681,7 +749,7 @@ export default function TradeWheel({
           <Modal.Dialog>
             <Modal.CloseTrigger />
             <Modal.Header>
-              <Modal.Heading>Limit price · {coin}</Modal.Heading>
+              <Modal.Heading>Move to price</Modal.Heading>
             </Modal.Header>
             <form
               onSubmit={(e) => {
@@ -703,11 +771,8 @@ export default function TradeWheel({
                 <Description>Mark {usd(mark ?? 0)}</Description>
               </Modal.Body>
               <Modal.Footer>
-                <Button slot="close" type="button" variant="secondary">
-                  Cancel
-                </Button>
-                <Button type="submit" variant="primary">
-                  Confirm
+                <Button fullWidth type="submit" variant="primary">
+                  Move
                 </Button>
               </Modal.Footer>
             </form>
