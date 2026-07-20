@@ -20,6 +20,7 @@ const ABS_MAX = 1_000_000;
 const WRITE_DEBOUNCE_MS = 450;
 
 const roundToStep = (n: number, step: number) => Math.round(n / step) * step;
+const ceilToStep = (n: number, step: number) => Math.ceil(n / step) * step;
 
 type StateResponse = { managed: false } | { managed: true; state: TenantState | null } | { error: string };
 
@@ -45,6 +46,7 @@ export default function TrailWidget({ address }: { address: string }) {
   const [state, setState] = useState<TenantState | null>(null);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [priceStep] = usePriceStep();
+  const absMin = ceilToStep(ABS_MIN, priceStep);
   const [localType, setLocalType] = useState<TrailType>("pct");
   const [localPct, setLocalPct] = useState(2);
   const [localAbs, setLocalAbs] = useState(100);
@@ -58,9 +60,9 @@ export default function TrailWidget({ address }: { address: string }) {
       setLocalType(trail.type);
       setLocalEnabled(trail.enabled);
       if (trail.type === "pct") setLocalPct(+(trail.value * 100).toFixed(2));
-      else setLocalAbs(roundToStep(trail.value, priceStep));
+      else setLocalAbs(Math.max(absMin, roundToStep(trail.value, priceStep)));
     },
-    [priceStep]
+    [absMin, priceStep]
   );
 
   const poll = useCallback(async () => {
@@ -136,7 +138,7 @@ export default function TrailWidget({ address }: { address: string }) {
   };
 
   const handleAbsChange = (v: number) => {
-    const rounded = roundToStep(v, priceStep);
+    const rounded = Math.max(absMin, roundToStep(v, priceStep));
     setLocalAbs(rounded);
     scheduleWrite("abs", { value: rounded });
   };
@@ -158,6 +160,7 @@ export default function TrailWidget({ address }: { address: string }) {
         <WidgetErrorBoundary label="Auto-trail">
           <TrailWidgetBody
             fetchError={fetchError}
+            absMin={absMin}
             localAbs={localAbs}
             localEnabled={localEnabled}
             localPct={localPct}
@@ -183,6 +186,7 @@ function TrailWidgetBody({
   localType,
   localPct,
   localAbs,
+  absMin,
   priceStep,
   priceToShow,
   state,
@@ -196,6 +200,7 @@ function TrailWidgetBody({
   localType: TrailType;
   localPct: number;
   localAbs: number;
+  absMin: number;
   priceStep: number;
   priceToShow: number | null;
   state: TenantState | null;
@@ -273,7 +278,7 @@ function TrailWidgetBody({
               group
               label="Trail distance"
               maxValue={ABS_MAX}
-              minValue={ABS_MIN}
+              minValue={absMin}
               prefix="$"
               step={priceStep}
               value={localAbs}

@@ -12,7 +12,8 @@ export function decimalsForStep(step: number): number {
 
 export function roundToStep(value: number, step: number, minValue?: number, maxValue?: number): number {
   const decimals = decimalsForStep(step);
-  let next = Number((Math.round(value / step) * step).toFixed(decimals));
+  const base = minValue ?? 0;
+  let next = Number((base + Math.round((value - base) / step) * step).toFixed(decimals));
   if (minValue != null) next = Math.max(minValue, next);
   if (maxValue != null) next = Math.min(maxValue, next);
   return Number(next.toFixed(decimals));
