@@ -10,5 +10,5 @@ export function orderLabel(o: OpenOrder): string {
     if (cond.includes("above") || cond.includes("take")) return "TP";
     if (cond.includes("below") || cond.includes("stop")) return "SL";
   }
-  return o.orderType.replace(/\sLimit$/, "");
+  return (o.orderType ?? "").replace(/\sLimit$/, "");
 }

@@ -11,6 +11,7 @@ import Positions from "@/components/Positions";
 import StatsStrip from "@/components/StatsStrip";
 import TradeWheel from "@/components/TradeWheel";
 import TrailWidget from "@/components/TrailWidget";
+import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import {
   PERIODS,
   accountBreakdown,
@@ -423,28 +424,46 @@ export default function Dashboard() {
           onRangeChange={handleRangeChange}
         />
         <div className="order-1 flex flex-col gap-4 lg:order-2 lg:w-[400px] lg:shrink-0">
-          <TradeWheel
-            address={state.currentUser!}
-            clearing={D.clearing}
-            coin={positions[0]?.coin ?? "BTC"}
-          />
-          <Positions positions={positions} address={state.currentUser!} />
-          <OpenOrders key={`orders-${state.currentUser}`} address={state.currentUser!} />
-          <TrailWidget key={state.currentUser} address={state.currentUser!} />
-          <FundingPanel fundTot={fundTot} fundingCount={activeFunding.length} wLbl={wLbl} />
-          <CapitalFlows
-            dep={flows.dep}
-            depN={flows.depN}
-            wd={flows.wd}
-            wdN={flows.wdN}
-            recent={flows.recent}
-            wLbl={wLbl}
-          />
+          <WidgetErrorBoundary label="Trade wheel">
+            <TradeWheel
+              address={state.currentUser!}
+              clearing={D.clearing}
+              coin={positions[0]?.coin ?? "BTC"}
+            />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary label="Open positions">
+            <Positions positions={positions} address={state.currentUser!} />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary key={`orders-${state.currentUser}`} label="Open orders">
+            <OpenOrders address={state.currentUser!} />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary key={state.currentUser} label="Auto-trail">
+            <TrailWidget address={state.currentUser!} />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary label="Funding">
+            <FundingPanel fundTot={fundTot} fundingCount={activeFunding.length} wLbl={wLbl} />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary label="Capital flows">
+            <CapitalFlows
+              dep={flows.dep}
+              depN={flows.depN}
+              wd={flows.wd}
+              wdN={flows.wdN}
+              recent={flows.recent}
+              wLbl={wLbl}
+            />
+          </WidgetErrorBoundary>
         </div>
         <div className="order-3 flex min-w-0 flex-1 flex-col gap-4">
-          <ChartPanel metric={state.metric} period={state.period} wLbl={wLbl} series={series} />
-          <FlowsPanel buckets={bk.arr} daily={bk.daily} wLbl={wLbl} />
-          <MarketTable coins={coins} totR={totR} totF={totF} nTrades={nTrades} wLbl={wLbl} />
+          <WidgetErrorBoundary label="Chart">
+            <ChartPanel metric={state.metric} period={state.period} wLbl={wLbl} series={series} />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary label="Flows">
+            <FlowsPanel buckets={bk.arr} daily={bk.daily} wLbl={wLbl} />
+          </WidgetErrorBoundary>
+          <WidgetErrorBoundary label="Market table">
+            <MarketTable coins={coins} totR={totR} totF={totF} nTrades={nTrades} wLbl={wLbl} />
+          </WidgetErrorBoundary>
         </div>
       </div>
       <footer className="mt-2 max-w-2xl text-xs leading-relaxed text-muted">
