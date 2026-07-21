@@ -201,7 +201,7 @@ function TradeWheelBody({
   const priceDialog = useOverlayState();
   const [priceDraft, setPriceDraft] = useState<number | null>(null);
   const [pendingConfirmSide, setPendingConfirmSide] = useState<"buy" | "sell" | null>(null);
-  const { confirm, updateBody: updateConfirmBody, isOpen: confirmIsOpen, dialog: confirmDialog } = useConfirm();
+  const { confirm, updateBody: updateConfirmBody, isOpen: confirmIsOpen } = useConfirm();
 
   const value = following ? mark : scrollValue;
 
@@ -861,8 +861,6 @@ function TradeWheelBody({
           </Modal.Dialog>
         </Modal.Container>
       </Modal.Backdrop>
-
-      {confirmDialog}
     </>
   );
 }

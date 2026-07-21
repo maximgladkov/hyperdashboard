@@ -30,7 +30,7 @@ export default function Positions({ positions, address }: { positions: Position[
 function PositionsBody({ positions, address }: { positions: Position[]; address?: string }) {
   const [closing, setClosing] = useState(false);
   const mids = useMarkPrices();
-  const { confirm, dialog: confirmDialog } = useConfirm();
+  const { confirm } = useConfirm();
 
   const rows = positions.map((p) => livePnl(p, mids[p.coin]));
 
@@ -113,7 +113,6 @@ function PositionsBody({ positions, address }: { positions: Position[]; address?
           {closing ? "Closing…" : "Close all positions"}
         </Button>
       )}
-      {confirmDialog}
     </div>
   );
 }

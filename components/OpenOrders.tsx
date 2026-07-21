@@ -32,7 +32,7 @@ function OpenOrdersBody({ address }: { address: string }) {
   const [orders, setOrders] = useState<OpenOrder[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [cancelling, setCancelling] = useState<number | null>(null);
-  const { confirm, dialog: confirmDialog } = useConfirm();
+  const { confirm } = useConfirm();
   const pollRef = useRef<() => void>(() => {});
 
   const handleCancel = async (order: OpenOrder) => {
@@ -143,7 +143,6 @@ function OpenOrdersBody({ address }: { address: string }) {
           </EmptyState.Header>
         </EmptyState>
       )}
-      {confirmDialog}
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { Providers } from "@/components/Providers";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -26,7 +27,7 @@ export default function RootLayout({
   return (
     <html className="dark" data-theme="mouve-dark" lang="en">
       <body className="bg-background text-foreground pt-4 pb-7 px-3 sm:pt-7 sm:pb-10 sm:px-[clamp(14px,4vw,44px)]">
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
