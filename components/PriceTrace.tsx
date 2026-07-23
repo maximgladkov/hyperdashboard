@@ -15,11 +15,11 @@ export const TRACE_PERIODS: {
   candle: "1m" | "5m" | "15m" | "1h";
   anchorMs: number;
 }[] = [
-  { id: "1m", label: "1m", windowMs: 60_000, candle: "1m", anchorMs: 10_000 },
-  { id: "5m", label: "5m", windowMs: 300_000, candle: "1m", anchorMs: 60_000 },
-  { id: "15m", label: "15m", windowMs: 900_000, candle: "1m", anchorMs: 300_000 },
-  { id: "1h", label: "1h", windowMs: 3_600_000, candle: "5m", anchorMs: 900_000 },
-  { id: "1d", label: "1d", windowMs: 86_400_000, candle: "1h", anchorMs: 14_400_000 },
+  { id: "1m", label: "1m", windowMs: 5 * 60_000, candle: "1m", anchorMs: 60_000 },
+  { id: "5m", label: "5m", windowMs: 5 * 300_000, candle: "1m", anchorMs: 300_000 },
+  { id: "15m", label: "15m", windowMs: 5 * 900_000, candle: "5m", anchorMs: 900_000 },
+  { id: "1h", label: "1h", windowMs: 5 * 3_600_000, candle: "15m", anchorMs: 3_600_000 },
+  { id: "1d", label: "1d", windowMs: 5 * 86_400_000, candle: "1h", anchorMs: 86_400_000 },
 ];
 
 export const DEFAULT_TRACE_PERIOD: TracePeriod = "5m";
