@@ -2,6 +2,7 @@
 
 import { useConfirm } from "@/components/ConfirmDialog";
 import { ConfirmStat, ConfirmStatsCard } from "@/components/ConfirmStat";
+import { PriceTrace, TRACE_PERIODS, useTracePeriod, type TracePeriod } from "@/components/PriceTrace";
 import { StepperField } from "@/components/StepperField";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { estimateFee, isTaker, useUserFees } from "@/lib/fees";
@@ -15,12 +16,12 @@ import type { TenantState } from "@/lib/trail";
 import type { ClearinghouseState, OpenOrder } from "@/lib/types";
 import { useMarkPrice } from "@/lib/useMarkPrice";
 import { NumberFlowInput } from "@daformat/react-number-flow-input";
-import { Widget } from "@heroui-pro/react";
+import { Segment, Widget } from "@heroui-pro/react";
 import type { ButtonProps } from "@heroui/react";
 import { Button, ButtonGroup, Description, Modal, toast, useOverlayState } from "@heroui/react";
 import NumberFlow from "@number-flow/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import type { CSSProperties } from "react";
+import type { CSSProperties, Key } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 const POSITION_POLL_MS = 3000;
@@ -120,18 +121,37 @@ export default function TradeWheel({
   address?: string;
   clearing?: ClearinghouseState;
 }) {
-  const mark = useMarkPrice(coin, initialPrice ?? null);
+  const [period, setPeriod] = useTracePeriod();
   return (
     <Widget>
       <Widget.Header>
         <Widget.Title>Trade &middot; {coin}</Widget.Title>
-        <Widget.Description className="flex items-center gap-1 font-mono">
-          Mark <NumberFlow format={moneyFormatOptions(mark ?? 0)} value={mark ?? 0} />
+        <Widget.Description className="flex items-center">
+          <Segment
+            aria-label="Price trace period"
+            className="min-h-0"
+            selectedKey={period}
+            size="sm"
+            variant="ghost"
+            onSelectionChange={(k: Key) => setPeriod(k as TracePeriod)}
+          >
+            {TRACE_PERIODS.map((p) => (
+              <Segment.Item key={p.id} className="px-2 py-0! h-5 text-[10px] data-[selected]:text-white font-mono" id={p.id}>
+                {p.label}
+              </Segment.Item>
+            ))}
+          </Segment>
         </Widget.Description>
       </Widget.Header>
       <Widget.Content className="p-0">
         <WidgetErrorBoundary label="Trade wheel">
-          <TradeWheelBody address={address} clearing={clearing} coin={coin} initialPrice={initialPrice} />
+          <TradeWheelBody
+            address={address}
+            clearing={clearing}
+            coin={coin}
+            initialPrice={initialPrice}
+            period={period}
+          />
         </WidgetErrorBoundary>
       </Widget.Content>
     </Widget>
@@ -143,11 +163,13 @@ function TradeWheelBody({
   initialPrice,
   address,
   clearing,
+  period,
 }: {
   coin: string;
   initialPrice?: number;
   address?: string;
   clearing?: ClearinghouseState;
+  period: TracePeriod;
 }) {
   const mark = useMarkPrice(coin, initialPrice ?? null);
   const [scrollValue, setScrollValue] = useState<number | null>(initialPrice ?? null);
@@ -177,8 +199,8 @@ function TradeWheelBody({
   const prevCoinRef = useRef<string | null>(null);
   const prevStepRef = useRef<number | null>(null);
 
-  const pollTrailRef = useRef<() => void>(() => {});
-  const pollOrdersRef = useRef<() => void>(() => {});
+  const pollTrailRef = useRef<() => void>(() => { });
+  const pollOrdersRef = useRef<() => void>(() => { });
 
   useEffect(() => {
     if (!address) {
@@ -186,7 +208,7 @@ function TradeWheelBody({
       setStopPx(null);
       setPositionSize(null);
       setPositionSide(null);
-      pollTrailRef.current = () => {};
+      pollTrailRef.current = () => { };
       return;
     }
     let cancelled = false;
@@ -221,14 +243,14 @@ function TradeWheelBody({
     return () => {
       cancelled = true;
       clearInterval(id);
-      pollTrailRef.current = () => {};
+      pollTrailRef.current = () => { };
     };
   }, [address, coin]);
 
   useEffect(() => {
     if (!address) {
       setOrders([]);
-      pollOrdersRef.current = () => {};
+      pollOrdersRef.current = () => { };
       return;
     }
     let cancelled = false;
@@ -245,7 +267,7 @@ function TradeWheelBody({
     return () => {
       cancelled = true;
       clearInterval(id);
-      pollOrdersRef.current = () => {};
+      pollOrdersRef.current = () => { };
     };
   }, [address, coin]);
 
@@ -588,263 +610,270 @@ function TradeWheelBody({
 
   return (
     <>
+      <div
+        className="relative aspect-square min-h-[360px] w-full select-none overflow-hidden bg-surface"
+        onPointerDown={handleTapReset}
+      >
         <div
-          className="relative aspect-square min-h-[360px] w-full select-none overflow-hidden bg-surface"
-          onPointerDown={handleTapReset}
+          ref={scrollRef}
+          className="absolute inset-0 z-[1] overflow-x-hidden overflow-y-scroll overscroll-contain [mask-image:linear-gradient(to_bottom,transparent,black_12%,black_88%,transparent)] [&::-webkit-scrollbar]:hidden"
+          style={{ scrollbarWidth: "none" }}
+          onScroll={handleScroll}
+          onTouchStart={exitFollowing}
+          onWheel={exitFollowing}
         >
-          <div
-            ref={scrollRef}
-            className="absolute inset-0 z-[1] overflow-x-hidden overflow-y-scroll overscroll-contain [mask-image:linear-gradient(to_bottom,transparent,black_12%,black_88%,transparent)] [&::-webkit-scrollbar]:hidden"
-            style={{ scrollbarWidth: "none" }}
-            onScroll={handleScroll}
-            onTouchStart={exitFollowing}
-            onWheel={exitFollowing}
-          >
-            <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
-              {virtualizer.getVirtualItems().map((item) => {
-                const absIndex = windowStart - item.index;
-                const tickValue = absIndex * step;
-                const major = absIndex % MAJOR_EVERY === 0;
-                return (
-                  <div
-                    key={item.key}
-                    className="absolute inset-x-0 top-0 flex items-center justify-end gap-1.5"
-                    style={{ height: item.size, transform: `translateY(${item.start}px)` }}
-                  >
-                    {major && (
-                      <span className="font-mono text-[10px] tabular-nums text-muted">
-                        {formatTick(tickValue, 0)}
-                      </span>
-                    )}
-                    <span className={major ? "h-[2px] w-4 bg-foreground/50" : "h-px w-2.5 bg-foreground/25"} />
-                  </div>
-                );
-              })}
-
-              {!following && markTop != null && (
-                <div
-                  className="pointer-events-none absolute inset-x-0 z-[5] border-t border-dashed border-accent/60"
-                  style={{ top: markTop }}
-                >
-                  <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-accent px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-accent-foreground">
-                    MARK <span className="tabular-nums">{usd(mark)}</span>
-                  </span>
-                </div>
-              )}
-
-              {entryTop != null && (
-                <div
-                  className="pointer-events-none absolute inset-x-0 z-[4] border-t border-dashed border-sky-400/60"
-                  style={{ top: entryTop }}
-                >
-                  <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-sky-400 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black">
-                    ENTRY
-                    {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
-                    @ <span className="tabular-nums">{usd(entryPx)}</span>
-                  </span>
-                </div>
-              )}
-
-              {stopTop != null && (
-                <div
-                  className="pointer-events-none absolute inset-x-0 z-[4] border-t border-dashed border-danger/70"
-                  style={{ top: stopTop }}
-                >
-                  <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-danger px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-danger-foreground">
-                    STOP
-                    {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
-                    @ <span className="tabular-nums">{usd(stopPx)}</span>
-                  </span>
-                </div>
-              )}
-
-              {liqTop != null && (
-                <div
-                  className="pointer-events-none absolute inset-x-0 z-[4] border-t-2 border-solid border-red-600"
-                  style={{ top: liqTop }}
-                >
-                  <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-red-600 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-white">
-                    LIQ <span className="tabular-nums">{usd(liquidationPx)}</span>
-                  </span>
-                </div>
-              )}
-
-              {orderLines.map(({ order, top, px }) => {
-                const isBuy = order.side === "B";
-                return (
-                  <div
-                    key={order.oid}
-                    className={`pointer-events-none absolute inset-x-0 z-[3] border-t border-dashed ${isBuy ? "border-cyan-400/60" : "border-orange-400/60"}`}
-                    style={{ top }}
-                  >
-                    <span
-                      className={`absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black ${isBuy ? "bg-cyan-400" : "bg-orange-400"}`}
-                    >
-                      {isBuy ? "BUY" : "SELL"} {orderLabel(order)}
-                      <span className="tabular-nums">{formatSize(+order.sz)}</span>
-                      @ <span className="tabular-nums">{usd(px)}</span>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          <div className="pointer-events-none absolute inset-x-0 top-1/2 h-[2px] -translate-y-1/2 bg-white/30" />
-
-          {hasPrice && (
-            <div className="absolute top-1/2 left-4 z-10 -translate-y-1/2" onPointerDown={(e) => e.stopPropagation()}>
-              <button
-                aria-label="Set limit price"
-                className={`flex cursor-pointer items-center justify-center rounded-full px-3 py-0 shadow-field outline-none transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
-                type="button"
-                onClick={openPriceDialog}
-              >
-                <NumberFlow
-                  className="text-3xl font-bold tabular-nums text-foreground"
-                  format={moneyFormatOptions(effectiveValue)}
-                  value={effectiveValue}
-                />
-              </button>
-            </div>
-          )}
-
-          <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-2" onPointerDown={(e) => e.stopPropagation()}>
-            <StepperField
-              aria-label="Position size"
-              label={`Position size · ${coin}`}
-              minValue={sizeStep}
-              step={sizeStep}
-              suffix={` ${coin}`}
-              value={size}
-              valueClassName="text-xs"
-              onChange={setSize}
+          <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+            <PriceTrace
+              coin={coin}
+              height={halfHeight}
+              mark={mark}
+              period={period}
+              pixelsPerStep={PIXELS_PER_STEP}
+              scrollRef={scrollRef}
+              step={step}
+              windowStartRef={windowStartRef}
             />
-            {positionSize != null && positionSide != null && (
+            {virtualizer.getVirtualItems().map((item) => {
+              const absIndex = windowStart - item.index;
+              const tickValue = absIndex * step;
+              const major = absIndex % MAJOR_EVERY === 0;
+              return (
+                <div
+                  key={item.key}
+                  className="absolute inset-x-0 top-0 flex items-center justify-end gap-1.5"
+                  style={{ height: item.size, transform: `translateY(${item.start}px)` }}
+                >
+                  {major && (
+                    <span className="font-mono text-[10px] tabular-nums text-muted">
+                      {formatTick(tickValue, 0)}
+                    </span>
+                  )}
+                  <span className={major ? "h-[2px] w-4 bg-foreground/50" : "h-px w-2.5 bg-foreground/25"} />
+                </div>
+              );
+            })}
+
+            {markTop != null && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute right-0 z-[5] -translate-y-1/2"
+                style={{ top: markTop }}
+              >
+                <div className="h-0 w-0 border-y-[8px] border-r-[11px] border-y-transparent border-r-accent" />
+              </div>
+            )}
+
+            {entryTop != null && (
+              <div
+                className="pointer-events-none absolute inset-x-0 z-[4] border-t border-dashed border-sky-400/60"
+                style={{ top: entryTop }}
+              >
+                <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-sky-400 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black">
+                  ENTRY
+                  {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
+                  @ <span className="tabular-nums">{usd(entryPx)}</span>
+                </span>
+              </div>
+            )}
+
+            {stopTop != null && (
+              <div
+                className="pointer-events-none absolute inset-x-0 z-[4] border-t border-dashed border-danger/70"
+                style={{ top: stopTop }}
+              >
+                <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-danger px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-danger-foreground">
+                  STOP
+                  {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
+                  @ <span className="tabular-nums">{usd(stopPx)}</span>
+                </span>
+              </div>
+            )}
+
+            {liqTop != null && (
+              <div
+                className="pointer-events-none absolute inset-x-0 z-[4] border-t-2 border-solid border-red-600"
+                style={{ top: liqTop }}
+              >
+                <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-red-600 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-white">
+                  LIQ <span className="tabular-nums">{usd(liquidationPx)}</span>
+                </span>
+              </div>
+            )}
+
+            {orderLines.map(({ order, top, px }) => {
+              const isBuy = order.side === "B";
+              return (
+                <div
+                  key={order.oid}
+                  className={`pointer-events-none absolute inset-x-0 z-[3] border-t border-dashed ${isBuy ? "border-cyan-400/60" : "border-orange-400/60"}`}
+                  style={{ top }}
+                >
+                  <span
+                    className={`absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black ${isBuy ? "bg-cyan-400" : "bg-orange-400"}`}
+                  >
+                    {isBuy ? "BUY" : "SELL"} {orderLabel(order)}
+                    <span className="tabular-nums">{formatSize(+order.sz)}</span>
+                    @ <span className="tabular-nums">{usd(px)}</span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {hasPrice && (
+          <div className="absolute top-1/2 left-4 z-10 -translate-y-1/2" onPointerDown={(e) => e.stopPropagation()}>
+            <button
+              aria-label="Set limit price"
+              className={`flex cursor-pointer items-center justify-center rounded-full px-3 py-0 shadow-field outline-none transition-colors ${following ? "bg-accent" : "bg-black/50"}`}
+              type="button"
+              onClick={openPriceDialog}
+            >
+              <NumberFlow
+                className="text-3xl font-bold tabular-nums text-foreground"
+                format={moneyFormatOptions(effectiveValue)}
+                value={effectiveValue}
+              />
+            </button>
+          </div>
+        )}
+
+        <div className="absolute inset-x-3 top-3 z-10 flex items-center justify-between gap-2" onPointerDown={(e) => e.stopPropagation()}>
+          <StepperField
+            aria-label="Position size"
+            label={`Position size · ${coin}`}
+            minValue={sizeStep}
+            step={sizeStep}
+            suffix={` ${coin}`}
+            value={size}
+            valueClassName="text-xs"
+            onChange={setSize}
+          />
+          {positionSize != null && positionSide != null && (
+            <ActionButton
+              aria-label={reduceOrder ? "Move reduce-only order to selected price" : "Reduce-only order matching position size"}
+              className="font-mono text-[11px]"
+              isDisabled={!address || reducing}
+              isPending={reducing}
+              size="sm"
+              variant="danger"
+              onPress={() => {
+                const reduceSize = Math.abs(positionSize);
+                const reduceSide = positionSide === "long" ? "sell" : "buy";
+                const limitPrice = following ? null : value;
+                const px = limitPrice ?? mark;
+                const fee =
+                  px != null && Number.isFinite(px) && px > 0
+                    ? estimateFee({
+                      notional: reduceSize * px,
+                      taker: isTaker(reduceSide, limitPrice, mark),
+                      rates: feeRates,
+                    })
+                    : null;
+                confirm(submitReduceOnly, {
+                  title: reduceOrder ? "Move reduce-only order" : "Reduce position",
+                  body: (
+                    <ConfirmStatsCard>
+                      <ConfirmStat currency={false} label="Size" suffix={coin} value={reduceSize} />
+                      <ConfirmStat
+                        label={following ? "Price (\u2248 mark)" : "Price"}
+                        value={px}
+                      />
+                      <ConfirmStat label="Est. fee" value={fee} />
+                    </ConfirmStatsCard>
+                  ),
+                  confirmLabel: reduceOrder ? "Move" : "Reduce",
+                  confirmVariant: "danger",
+                });
+              }}
+            >
+              {reduceOrder ? "Move" : "Reduce"} {formatSize(Math.abs(positionSize))} {coin}
+            </ActionButton>
+          )}
+        </div>
+
+        <div className="absolute inset-x-3 bottom-3 z-10 flex flex-col gap-2" onPointerDown={(e) => e.stopPropagation()}>
+          {following ? (
+            <ButtonGroup fullWidth size="lg">
               <ActionButton
-                aria-label={reduceOrder ? "Move reduce-only order to selected price" : "Reduce-only order matching position size"}
-                className="font-mono text-[11px]"
-                isDisabled={!address || reducing}
-                isPending={reducing}
-                size="sm"
-                variant="danger"
+                variant="success"
+                isDisabled={!address || (pending != null && pending !== "buy")}
+                isPending={pending === "buy"}
                 onPress={() => {
-                  const reduceSize = Math.abs(positionSize);
-                  const reduceSide = positionSide === "long" ? "sell" : "buy";
-                  const limitPrice = following ? null : value;
-                  const px = limitPrice ?? mark;
-                  const fee =
-                    px != null && Number.isFinite(px) && px > 0
-                      ? estimateFee({
-                          notional: reduceSize * px,
-                          taker: isTaker(reduceSide, limitPrice, mark),
-                          rates: feeRates,
-                        })
-                      : null;
-                  confirm(submitReduceOnly, {
-                    title: reduceOrder ? "Move reduce-only order" : "Reduce position",
-                    body: (
-                      <ConfirmStatsCard>
-                        <ConfirmStat currency={false} label="Size" suffix={coin} value={reduceSize} />
-                        <ConfirmStat
-                          label={following ? "Price (\u2248 mark)" : "Price"}
-                          value={px}
-                        />
-                        <ConfirmStat label="Est. fee" value={fee} />
-                      </ConfirmStatsCard>
-                    ),
-                    confirmLabel: reduceOrder ? "Move" : "Reduce",
+                  setPendingConfirmSide("buy");
+                  confirm(() => submitOrder("buy"), {
+                    title: "Confirm long",
+                    body: confirmBody({
+                      orderType: "Market order",
+                      size,
+                      coin,
+                      price: mark,
+                      isMarket: true,
+                      estimatedLiq: estimatedLiqBuy,
+                      fee: estimatedFeeBuy,
+                    }),
+                    confirmLabel: "Long",
+                    confirmVariant: "success",
+                  });
+                }}
+              >
+                Long
+              </ActionButton>
+              <ActionButton
+                variant="danger"
+                isDisabled={!address || (pending != null && pending !== "sell")}
+                isPending={pending === "sell"}
+                onPress={() => {
+                  setPendingConfirmSide("sell");
+                  confirm(() => submitOrder("sell"), {
+                    title: "Confirm short",
+                    body: confirmBody({
+                      orderType: "Market order",
+                      size,
+                      coin,
+                      price: mark,
+                      isMarket: true,
+                      estimatedLiq: estimatedLiqSell,
+                      fee: estimatedFeeSell,
+                    }),
+                    confirmLabel: "Short",
                     confirmVariant: "danger",
                   });
                 }}
               >
-                {reduceOrder ? "Move" : "Reduce"} {formatSize(Math.abs(positionSize))} {coin}
+                <ButtonGroup.Separator />
+                Short
               </ActionButton>
-            )}
-          </div>
-
-          <div className="absolute inset-x-3 bottom-3 z-10 flex flex-col gap-2" onPointerDown={(e) => e.stopPropagation()}>
-            {following ? (
-              <ButtonGroup fullWidth size="lg">
-                <ActionButton
-                  variant="success"
-                  isDisabled={!address || (pending != null && pending !== "buy")}
-                  isPending={pending === "buy"}
-                  onPress={() => {
-                    setPendingConfirmSide("buy");
-                    confirm(() => submitOrder("buy"), {
-                      title: "Confirm long",
-                      body: confirmBody({
-                        orderType: "Market order",
-                        size,
-                        coin,
-                        price: mark,
-                        isMarket: true,
-                        estimatedLiq: estimatedLiqBuy,
-                        fee: estimatedFeeBuy,
-                      }),
-                      confirmLabel: "Long",
-                      confirmVariant: "success",
-                    });
-                  }}
-                >
-                  Long
-                </ActionButton>
-                <ActionButton
-                  variant="danger"
-                  isDisabled={!address || (pending != null && pending !== "sell")}
-                  isPending={pending === "sell"}
-                  onPress={() => {
-                    setPendingConfirmSide("sell");
-                    confirm(() => submitOrder("sell"), {
-                      title: "Confirm short",
-                      body: confirmBody({
-                        orderType: "Market order",
-                        size,
-                        coin,
-                        price: mark,
-                        isMarket: true,
-                        estimatedLiq: estimatedLiqSell,
-                        fee: estimatedFeeSell,
-                      }),
-                      confirmLabel: "Short",
-                      confirmVariant: "danger",
-                    });
-                  }}
-                >
-                  <ButtonGroup.Separator />
-                  Short
-                </ActionButton>
-              </ButtonGroup>
-            ) : (
-              <ActionButton
-                fullWidth
-                size="lg"
-                variant={isLong ? "success" : "danger"}
-                isDisabled={!address || pending != null}
-                isPending={pending === (isLong ? "buy" : "sell")}
-                onPress={() =>
-                  confirm(() => submitOrder(isLong ? "buy" : "sell"), {
-                    title: isLong ? "Confirm long" : "Confirm short",
-                    body: confirmBody({
-                      orderType: "Limit order",
-                      size,
-                      coin,
-                      price: value,
-                      isMarket: false,
-                      estimatedLiq: isLong ? estimatedLiqBuy : estimatedLiqSell,
-                      fee: isLong ? estimatedFeeBuy : estimatedFeeSell,
-                    }),
-                    confirmLabel: isLong ? "Long" : "Short",
-                    confirmVariant: isLong ? "success" : "danger",
-                  })
-                }
-              >
-                {isLong ? "Long" : "Short"} @ {usd(value)}
-              </ActionButton>
-            )}
-          </div>
+            </ButtonGroup>
+          ) : (
+            <ActionButton
+              fullWidth
+              size="lg"
+              variant={isLong ? "success" : "danger"}
+              isDisabled={!address || pending != null}
+              isPending={pending === (isLong ? "buy" : "sell")}
+              onPress={() =>
+                confirm(() => submitOrder(isLong ? "buy" : "sell"), {
+                  title: isLong ? "Confirm long" : "Confirm short",
+                  body: confirmBody({
+                    orderType: "Limit order",
+                    size,
+                    coin,
+                    price: value,
+                    isMarket: false,
+                    estimatedLiq: isLong ? estimatedLiqBuy : estimatedLiqSell,
+                    fee: isLong ? estimatedFeeBuy : estimatedFeeSell,
+                  }),
+                  confirmLabel: isLong ? "Long" : "Short",
+                  confirmVariant: isLong ? "success" : "danger",
+                })
+              }
+            >
+              {isLong ? "Long" : "Short"} @ {usd(value)}
+            </ActionButton>
+          )}
         </div>
+      </div>
 
       <Modal.Backdrop isOpen={priceDialog.isOpen} onOpenChange={priceDialog.setOpen}>
         <Modal.Container size="xs">

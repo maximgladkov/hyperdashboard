@@ -128,3 +128,28 @@ export async function fetchPerpMids(): Promise<Record<string, number>> {
   }
   return mids;
 }
+
+export type Candle = {
+  t: number;
+  T: number;
+  o: string;
+  c: string;
+  h: string;
+  l: string;
+};
+
+export async function fetchCandles(
+  coin: string,
+  interval: "1m" | "3m" | "5m" | "15m" | "30m" | "1h",
+  startTime: number,
+  endTime: number
+): Promise<Candle[]> {
+  try {
+    return await info<Candle[]>({
+      type: "candleSnapshot",
+      req: { coin, interval, startTime, endTime },
+    });
+  } catch {
+    return [];
+  }
+}
