@@ -80,7 +80,7 @@ const FADE_START = 0.55;
 const MIN_POINT_GAP_PX = 2;
 const OVERDRAW_PX = 48;
 const BAND_PAD_PX = 16;
-const RIGHT_EDGE_INSET = 11;
+const RIGHT_EDGE_INSET = 14;
 
 function trimBufferMs(windowMs: number, anchorMs: number) {
   return Math.max(120_000, anchorMs * 2, Math.round(windowMs * 0.05));

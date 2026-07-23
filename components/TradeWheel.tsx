@@ -694,7 +694,10 @@ function TradeWheelBody({
               className="pointer-events-none absolute right-0 z-[5] -translate-y-1/2"
               style={{ visibility: "hidden" }}
             >
-              <div className="h-0 w-0 border-y-[8px] border-r-[11px] border-y-transparent border-r-accent" />
+              <svg className="block" height="18" viewBox="0 0 14 18" width="14">
+                <path d="M14 0L0 9H14Z" fill="white" />
+                <path d="M14 18L0 9H14Z" fill="var(--accent)" />
+              </svg>
             </div>
 
             {entryTop != null && (
