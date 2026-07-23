@@ -32,6 +32,7 @@ const MAJOR_EVERY = 2;
 const VIRTUAL_COUNT = 40_000;
 const VIRTUAL_CENTER = VIRTUAL_COUNT / 2;
 const RECENTER_MARGIN = 5_000;
+const MARK_TRIANGLE_SMOOTH_MS = 140;
 
 function scrollTopForIndex(index: number): number {
   return index * PIXELS_PER_STEP + PIXELS_PER_STEP / 2;
@@ -198,6 +199,10 @@ function TradeWheelBody({
   const lastTapRef = useRef(0);
   const prevCoinRef = useRef<string | null>(null);
   const prevStepRef = useRef<number | null>(null);
+  const markTriangleRef = useRef<HTMLDivElement>(null);
+  const smoothMarkRef = useRef<number | null>(null);
+  const markRef = useRef(mark);
+  markRef.current = mark;
 
   const pollTrailRef = useRef<() => void>(() => { });
   const pollOrdersRef = useRef<() => void>(() => { });
@@ -537,6 +542,7 @@ function TradeWheelBody({
             description: `${formatSize(order.filledSz)} ${coin} @ ${usd(order.avgPx)}`,
           });
         }
+        setFollowing(true);
       } catch (err) {
         toast.danger("Order failed", { description: (err as Error).message });
       } finally {
@@ -570,6 +576,7 @@ function TradeWheelBody({
           description: `${formatSize(order.filledSz)} ${coin} @ ${usd(order.avgPx)}`,
         });
       }
+      setFollowing(true);
     } catch (err) {
       toast.danger(moving ? "Reduce-only move failed" : "Reduce-only order failed", {
         description: (err as Error).message,
@@ -584,13 +591,41 @@ function TradeWheelBody({
   const isLong = mark == null || effectiveValue <= mark;
   const liquidationPx = existingPosition?.liquidationPx != null ? +existingPosition.liquidationPx : null;
 
+  useEffect(() => {
+    smoothMarkRef.current = null;
+  }, [coin]);
+
+  useEffect(() => {
+    let raf = 0;
+    let lastTs = 0;
+    const tick = (ts: number) => {
+      raf = requestAnimationFrame(tick);
+      const el = markTriangleRef.current;
+      const start = windowStartRef.current;
+      const m = markRef.current;
+      if (!el || start == null || m == null || containerHeight <= 0 || step <= 0) {
+        if (el) el.style.visibility = "hidden";
+        return;
+      }
+      const dt = lastTs ? Math.min(64, ts - lastTs) : 16;
+      lastTs = ts;
+      const alpha = 1 - Math.exp(-dt / MARK_TRIANGLE_SMOOTH_MS);
+      if (smoothMarkRef.current == null) smoothMarkRef.current = m;
+      else smoothMarkRef.current += (m - smoothMarkRef.current) * alpha;
+      const half = containerHeight / 2;
+      el.style.visibility = "visible";
+      el.style.top = `${half + scrollTopForIndex(start - smoothMarkRef.current / step)}px`;
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [containerHeight, step]);
+
   // Content-relative top (matches the virtualizer's own item.start + paddingStart), so lines
   // scroll natively with the ticks instead of chasing scroll-derived React state every frame.
   const windowStart = windowStartRef.current ?? 0;
   const halfHeight = containerHeight / 2;
   const contentTop = (price: number) => halfHeight + scrollTopForIndex(windowStart - price / step);
 
-  const markTop = mark != null ? contentTop(mark) : null;
   const entryTop = entryPx != null ? contentTop(entryPx) : null;
   const stopTop = stopPx != null ? contentTop(stopPx) : null;
   const liqTop = liquidationPx != null ? contentTop(liquidationPx) : null;
@@ -653,15 +688,14 @@ function TradeWheelBody({
               );
             })}
 
-            {markTop != null && (
-              <div
-                aria-hidden
-                className="pointer-events-none absolute right-0 z-[5] -translate-y-1/2"
-                style={{ top: markTop }}
-              >
-                <div className="h-0 w-0 border-y-[8px] border-r-[11px] border-y-transparent border-r-accent" />
-              </div>
-            )}
+            <div
+              ref={markTriangleRef}
+              aria-hidden
+              className="pointer-events-none absolute right-0 z-[5] -translate-y-1/2"
+              style={{ visibility: "hidden" }}
+            >
+              <div className="h-0 w-0 border-y-[8px] border-r-[11px] border-y-transparent border-r-accent" />
+            </div>
 
             {entryTop != null && (
               <div
