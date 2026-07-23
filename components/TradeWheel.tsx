@@ -1,8 +1,10 @@
 "use client";
 
 import { useConfirm } from "@/components/ConfirmDialog";
+import { ConfirmStat, ConfirmStatsCard } from "@/components/ConfirmStat";
 import { StepperField } from "@/components/StepperField";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
+import { estimateFee, isTaker, useUserFees } from "@/lib/fees";
 import { moneyFormatOptions, usd } from "@/lib/format";
 import { fetchMaxLeverage, fetchOpenOrders } from "@/lib/hyperliquid";
 import { estimateLiquidationPrice, type LiqOrder } from "@/lib/liquidation";
@@ -13,9 +15,9 @@ import type { TenantState } from "@/lib/trail";
 import type { ClearinghouseState, OpenOrder } from "@/lib/types";
 import { useMarkPrice } from "@/lib/useMarkPrice";
 import { NumberFlowInput } from "@daformat/react-number-flow-input";
-import { NumberValue, Widget } from "@heroui-pro/react";
+import { Widget } from "@heroui-pro/react";
 import type { ButtonProps } from "@heroui/react";
-import { Button, ButtonGroup, Card, Description, Modal, toast, useOverlayState } from "@heroui/react";
+import { Button, ButtonGroup, Description, Modal, toast, useOverlayState } from "@heroui/react";
 import NumberFlow from "@number-flow/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type { CSSProperties } from "react";
@@ -46,50 +48,13 @@ function formatSize(n: number): string {
   return n.toFixed(4).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "");
 }
 
-function ConfirmStat({
-  label,
-  value,
-  currency = true,
-  suffix,
-  tone,
-}: {
-  label: string;
-  value: number | null;
-  currency?: boolean;
-  suffix?: string;
-  tone?: "danger";
-}) {
-  return (
-    <div className="flex items-center justify-between gap-4 px-5 py-4">
-      <span className="text-sm text-muted">{label}</span>
-      {value == null ? (
-        <span className="font-mono text-sm text-muted">&mdash;</span>
-      ) : (
-        <NumberValue
-          className={`text-xl items-baseline tabular-nums ${tone === "danger" ? "text-danger" : "text-foreground"}`}
-          currency={currency ? "USD" : undefined}
-          maximumFractionDigits={currency ? (Math.abs(value) >= 1000 ? 0 : 2) : 4}
-          style={currency ? "currency" : "decimal"}
-          value={value}
-        >
-          {suffix && (
-            <NumberValue.Suffix className="ml-2 text-sm text-muted leading-none">
-              {suffix}
-            </NumberValue.Suffix>
-          )}
-        </NumberValue>
-      )}
-    </div>
-  );
-}
-
 function confirmBody({
-  orderType,
   size,
   coin,
   price,
   isMarket,
   estimatedLiq,
+  fee,
 }: {
   orderType: string;
   size: number;
@@ -97,15 +62,15 @@ function confirmBody({
   price: number | null;
   isMarket: boolean;
   estimatedLiq: number | null;
+  fee: number | null;
 }) {
   return (
-    <div className="flex flex-col gap-3">
-      <Card variant="secondary" className="flex flex-col gap-0 p-0 divide-y">
-        <ConfirmStat currency={false} label="Size" suffix={coin} value={size} />
-        <ConfirmStat label={isMarket ? "Price (\u2248 mark)" : "Price"} value={price} />
-        <ConfirmStat label="Est. liquidation" tone="danger" value={estimatedLiq} />
-      </Card>
-    </div>
+    <ConfirmStatsCard>
+      <ConfirmStat currency={false} label="Size" suffix={coin} value={size} />
+      <ConfirmStat label={isMarket ? "Price (\u2248 mark)" : "Price"} value={price} />
+      <ConfirmStat label="Est. liquidation" tone="danger" value={estimatedLiq} />
+      <ConfirmStat label="Est. fee" value={fee} />
+    </ConfirmStatsCard>
   );
 }
 
@@ -202,6 +167,7 @@ function TradeWheelBody({
   const [priceDraft, setPriceDraft] = useState<number | null>(null);
   const [pendingConfirmSide, setPendingConfirmSide] = useState<"buy" | "sell" | null>(null);
   const { confirm, updateBody: updateConfirmBody, isOpen: confirmIsOpen } = useConfirm();
+  const feeRates = useUserFees(address);
 
   const value = following ? mark : scrollValue;
 
@@ -334,6 +300,24 @@ function TradeWheelBody({
   const estimatedLiqBuy = useMemo(() => estimateLiqFor("buy"), [estimateLiqFor]);
   const estimatedLiqSell = useMemo(() => estimateLiqFor("sell"), [estimateLiqFor]);
 
+  const estimateFeeFor = useCallback(
+    (orderSide: "buy" | "sell"): number | null => {
+      const limitPrice = following ? null : value;
+      const px = limitPrice ?? mark;
+      if (px == null || !Number.isFinite(px) || px <= 0) return null;
+      const notional = size * px;
+      return estimateFee({
+        notional,
+        taker: isTaker(orderSide, limitPrice, mark),
+        rates: feeRates,
+      });
+    },
+    [following, value, mark, size, feeRates]
+  );
+
+  const estimatedFeeBuy = useMemo(() => estimateFeeFor("buy"), [estimateFeeFor]);
+  const estimatedFeeSell = useMemo(() => estimateFeeFor("sell"), [estimateFeeFor]);
+
   useEffect(() => {
     if (!confirmIsOpen) setPendingConfirmSide(null);
   }, [confirmIsOpen]);
@@ -348,9 +332,21 @@ function TradeWheelBody({
         price: mark,
         isMarket: true,
         estimatedLiq: pendingConfirmSide === "buy" ? estimatedLiqBuy : estimatedLiqSell,
+        fee: pendingConfirmSide === "buy" ? estimatedFeeBuy : estimatedFeeSell,
       })
     );
-  }, [pendingConfirmSide, following, mark, size, coin, estimatedLiqBuy, estimatedLiqSell, updateConfirmBody]);
+  }, [
+    pendingConfirmSide,
+    following,
+    mark,
+    size,
+    coin,
+    estimatedLiqBuy,
+    estimatedLiqSell,
+    estimatedFeeBuy,
+    estimatedFeeSell,
+    updateConfirmBody,
+  ]);
 
   const step = priceStep;
 
@@ -732,14 +728,35 @@ function TradeWheelBody({
                 isPending={reducing}
                 size="sm"
                 variant="danger"
-                onPress={() =>
+                onPress={() => {
+                  const reduceSize = Math.abs(positionSize);
+                  const reduceSide = positionSide === "long" ? "sell" : "buy";
+                  const limitPrice = following ? null : value;
+                  const px = limitPrice ?? mark;
+                  const fee =
+                    px != null && Number.isFinite(px) && px > 0
+                      ? estimateFee({
+                          notional: reduceSize * px,
+                          taker: isTaker(reduceSide, limitPrice, mark),
+                          rates: feeRates,
+                        })
+                      : null;
                   confirm(submitReduceOnly, {
                     title: reduceOrder ? "Move reduce-only order" : "Reduce position",
-                    body: `${reduceOrder ? "Move" : "Place"} a reduce-only order for ${formatSize(Math.abs(positionSize))} ${coin}${following ? " at market" : ` @ ${usd(value)}`}.`,
+                    body: (
+                      <ConfirmStatsCard>
+                        <ConfirmStat currency={false} label="Size" suffix={coin} value={reduceSize} />
+                        <ConfirmStat
+                          label={following ? "Price (\u2248 mark)" : "Price"}
+                          value={px}
+                        />
+                        <ConfirmStat label="Est. fee" value={fee} />
+                      </ConfirmStatsCard>
+                    ),
                     confirmLabel: reduceOrder ? "Move" : "Reduce",
                     confirmVariant: "danger",
-                  })
-                }
+                  });
+                }}
               >
                 {reduceOrder ? "Move" : "Reduce"} {formatSize(Math.abs(positionSize))} {coin}
               </ActionButton>
@@ -764,6 +781,7 @@ function TradeWheelBody({
                         price: mark,
                         isMarket: true,
                         estimatedLiq: estimatedLiqBuy,
+                        fee: estimatedFeeBuy,
                       }),
                       confirmLabel: "Long",
                       confirmVariant: "success",
@@ -787,6 +805,7 @@ function TradeWheelBody({
                         price: mark,
                         isMarket: true,
                         estimatedLiq: estimatedLiqSell,
+                        fee: estimatedFeeSell,
                       }),
                       confirmLabel: "Short",
                       confirmVariant: "danger",
@@ -814,6 +833,7 @@ function TradeWheelBody({
                       price: value,
                       isMarket: false,
                       estimatedLiq: isLong ? estimatedLiqBuy : estimatedLiqSell,
+                      fee: isLong ? estimatedFeeBuy : estimatedFeeSell,
                     }),
                     confirmLabel: isLong ? "Long" : "Short",
                     confirmVariant: isLong ? "success" : "danger",

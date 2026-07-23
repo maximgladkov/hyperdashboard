@@ -3,10 +3,12 @@
 import { Button, Chip, toast } from "@heroui/react";
 import { EmptyState, Widget } from "@heroui-pro/react";
 import NumberFlow from "@number-flow/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useConfirm } from "@/components/ConfirmDialog";
+import { ConfirmStat, ConfirmStatsCard } from "@/components/ConfirmStat";
 import { WidgetErrorBoundary } from "@/components/WidgetErrorBoundary";
 import { livePnl } from "@/lib/compute";
+import { estimateFee, useUserFees } from "@/lib/fees";
 import { cls, moneyFormatOptions, usd } from "@/lib/format";
 import { closePosition } from "@/lib/trade";
 import { useMarkPrices } from "@/lib/useMarkPrice";
@@ -31,8 +33,25 @@ function PositionsBody({ positions, address }: { positions: Position[]; address?
   const [closing, setClosing] = useState(false);
   const mids = useMarkPrices();
   const { confirm } = useConfirm();
+  const feeRates = useUserFees(address);
 
   const rows = positions.map((p) => livePnl(p, mids[p.coin]));
+
+  const closeNotional = useMemo(
+    () =>
+      rows.reduce((sum, p) => {
+        const size = Math.abs(+p.szi);
+        const px = mids[p.coin] ?? +p.entryPx;
+        if (!size || !Number.isFinite(px) || px <= 0) return sum;
+        return sum + size * px;
+      }, 0),
+    [rows, mids]
+  );
+
+  const closeFee = useMemo(
+    () => (closeNotional > 0 ? estimateFee({ notional: closeNotional, taker: true, rates: feeRates }) : null),
+    [closeNotional, feeRates]
+  );
 
   const handleCloseAll = async () => {
     if (!address || closing) return;
@@ -104,7 +123,13 @@ function PositionsBody({ positions, address }: { positions: Position[]; address?
           onPress={() =>
             confirm(handleCloseAll, {
               title: "Close all positions",
-              body: `Send a market close for all ${rows.length} open position${rows.length === 1 ? "" : "s"}.`,
+              body: (
+                <ConfirmStatsCard>
+                  <ConfirmStat currency={false} label="Positions" value={rows.length} />
+                  <ConfirmStat label="Est. notional" value={closeNotional || null} />
+                  <ConfirmStat label="Est. fee" value={closeFee} />
+                </ConfirmStatsCard>
+              ),
               confirmLabel: "Close all",
               confirmVariant: "danger",
             })

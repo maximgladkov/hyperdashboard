@@ -35,6 +35,35 @@ export async function fetchMaxLeverage(coin: string): Promise<number | null> {
   return asset?.maxLeverage ?? null;
 }
 
+const BASE_CROSS_RATE = 0.00045;
+const BASE_ADD_RATE = 0.00015;
+
+type UserFeesResponse = {
+  userCrossRate?: string;
+  userAddRate?: string;
+};
+
+const userFeesCache = new Map<string, Promise<{ crossRate: number; addRate: number }>>();
+
+export async function fetchUserFees(u: string): Promise<{ crossRate: number; addRate: number }> {
+  const key = u.toLowerCase();
+  let cached = userFeesCache.get(key);
+  if (!cached) {
+    cached = info<UserFeesResponse>({ type: "userFees", user: u })
+      .then((res) => {
+        const crossRate = +(res.userCrossRate ?? NaN);
+        const addRate = +(res.userAddRate ?? NaN);
+        return {
+          crossRate: Number.isFinite(crossRate) ? crossRate : BASE_CROSS_RATE,
+          addRate: Number.isFinite(addRate) ? addRate : BASE_ADD_RATE,
+        };
+      })
+      .catch(() => ({ crossRate: BASE_CROSS_RATE, addRate: BASE_ADD_RATE }));
+    userFeesCache.set(key, cached);
+  }
+  return cached;
+}
+
 export async function fetchLedger(u: string, start: number, end: number): Promise<LedgerEvent[]> {
   let out: LedgerEvent[] = [];
   let t = start;
