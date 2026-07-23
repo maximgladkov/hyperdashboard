@@ -80,7 +80,8 @@ const FADE_START = 0.55;
 const MIN_POINT_GAP_PX = 2;
 const OVERDRAW_PX = 48;
 const BAND_PAD_PX = 16;
-const RIGHT_EDGE_INSET = 14;
+const TRIANGLE_WIDTH = 14;
+const RIGHT_EDGE_INSET = TRIANGLE_WIDTH;
 
 function trimBufferMs(windowMs: number, anchorMs: number) {
   return Math.max(120_000, anchorMs * 2, Math.round(windowMs * 0.05));
@@ -340,13 +341,20 @@ export function PriceTrace({
 
       ctx.setTransform(dpr, 0, 0, dpr, OVERDRAW_PX * dpr, 0);
       ctx.clearRect(-OVERDRAW_PX, 0, w + OVERDRAW_PX, bandH);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(-OVERDRAW_PX, 0, rightX + OVERDRAW_PX, bandH);
+      ctx.clip();
+
       ctx.beginPath();
       ctx.strokeStyle = stroke;
       ctx.lineWidth = LINE_WIDTH;
       ctx.lineJoin = "round";
-      ctx.lineCap = "round";
+      ctx.lineCap = "butt";
       strokeSmooth(ctx, pts);
       ctx.stroke();
+      ctx.restore();
 
       const windowStartT = now - win;
       const firstAnchor = Math.ceil(windowStartT / anchorMs) * anchorMs;
@@ -356,6 +364,11 @@ export function PriceTrace({
         if (x < -OVERDRAW_PX || x > rightX) continue;
         ctx.fillRect(x - SEPARATOR_WIDTH / 2, 0, SEPARATOR_WIDTH, bandH);
       }
+
+      const tipPct = ((OVERDRAW_PX + rightX) / (w + OVERDRAW_PX)) * 100;
+      const fade = `linear-gradient(to right, black 0%, black ${FADE_START * 100}%, rgba(0,0,0,0.35) ${Math.max(FADE_START * 100 + 5, tipPct - 12)}%, black ${tipPct}%, black 100%)`;
+      canvas.style.setProperty("mask-image", fade);
+      canvas.style.setProperty("-webkit-mask-image", fade);
     };
 
     raf = requestAnimationFrame(draw);
@@ -367,11 +380,7 @@ export function PriceTrace({
       ref={canvasRef}
       aria-hidden
       className="pointer-events-none absolute z-0"
-      style={{
-        visibility: "hidden",
-        maskImage: `linear-gradient(to right, black 0%, black ${FADE_START * 100}%, rgba(0,0,0,0.35) 82%, transparent 100%)`,
-        WebkitMaskImage: `linear-gradient(to right, black 0%, black ${FADE_START * 100}%, rgba(0,0,0,0.35) 82%, transparent 100%)`,
-      }}
+      style={{ visibility: "hidden" }}
     />
   );
 }
