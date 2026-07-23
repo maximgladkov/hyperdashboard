@@ -6,3 +6,19 @@
 body {
   min-height: 100vh;
 }
+
+@media (max-width: 639.98px) {
+  .modal__backdrop,
+  .alert-dialog__backdrop {
+    position: absolute;
+    display: block;
+    height: var(--page-height);
+  }
+
+  .modal__container,
+  .alert-dialog__container {
+    position: sticky;
+    top: 0;
+    height: var(--visual-viewport-height);
+  }
+}
