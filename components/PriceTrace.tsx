@@ -365,8 +365,7 @@ export function PriceTrace({
         ctx.fillRect(x - SEPARATOR_WIDTH / 2, 0, SEPARATOR_WIDTH, bandH);
       }
 
-      const tipPct = ((OVERDRAW_PX + rightX) / (w + OVERDRAW_PX)) * 100;
-      const fade = `linear-gradient(to right, black 0%, black ${FADE_START * 100}%, rgba(0,0,0,0.35) ${Math.max(FADE_START * 100 + 5, tipPct - 12)}%, black ${tipPct}%, black 100%)`;
+      const fade = `linear-gradient(to right, black 0%, black ${FADE_START * 100}%, rgba(0,0,0,0.35) 82%, transparent 100%)`;
       canvas.style.setProperty("mask-image", fade);
       canvas.style.setProperty("-webkit-mask-image", fade);
     };
