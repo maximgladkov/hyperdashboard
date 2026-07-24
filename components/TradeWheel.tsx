@@ -307,6 +307,26 @@ function TradeWheelBody({
     [orders]
   );
 
+  const accountValue = useMemo(() => {
+    const cross = clearing?.crossMarginSummary?.accountValue ?? clearing?.marginSummary?.accountValue;
+    const parsed = cross != null ? +cross : NaN;
+    return Number.isFinite(parsed) ? parsed : 0;
+  }, [clearing]);
+
+  const existingMaintenanceMargin = useMemo(() => {
+    const direct = clearing?.crossMaintenanceMarginUsed != null ? +clearing.crossMaintenanceMarginUsed : NaN;
+    if (Number.isFinite(direct)) return direct;
+    let sum = 0;
+    for (const ap of clearing?.assetPositions ?? []) {
+      const p = ap.position;
+      if (p.leverage?.type !== "cross") continue;
+      const pv = p.positionValue != null ? +p.positionValue : NaN;
+      const ml = p.maxLeverage;
+      if (Number.isFinite(pv) && ml && ml > 0) sum += pv / (2 * ml);
+    }
+    return sum;
+  }, [clearing]);
+
   const estimateLiqFor = useCallback(
     (orderSide: "buy" | "sell"): number | null => {
       if (isIsolated || mark == null) return null;
@@ -318,10 +338,12 @@ function TradeWheelBody({
         newOrderPrice: limitPrice,
         leverage,
         maxLeverage,
+        accountValue,
+        existingMaintenanceMargin,
         addOrders: orderSide === "buy" ? buyAddOrders : sellAddOrders,
       });
     },
-    [isIsolated, mark, following, value, size, leverage, maxLeverage, buyAddOrders, sellAddOrders]
+    [isIsolated, mark, following, value, size, leverage, maxLeverage, accountValue, existingMaintenanceMargin, buyAddOrders, sellAddOrders]
   );
 
   const estimatedLiqBuy = useMemo(() => estimateLiqFor("buy"), [estimateLiqFor]);

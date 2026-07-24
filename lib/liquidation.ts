@@ -7,22 +7,36 @@ export type LiqInput = {
   newOrderPrice: number | null;
   leverage: number;
   maxLeverage: number | null;
+  accountValue: number;
+  existingMaintenanceMargin: number;
   addOrders: LiqOrder[];
 };
 
-function candidateLiqPrice(size: number, notionalSum: number, leverage: number, l: number): number | null {
+function candidateLiqPrice(
+  size: number,
+  notionalSum: number,
+  marginAvailable: number,
+  leverage: number,
+  l: number
+): number | null {
   const sideSign = Math.sign(size);
   if (sideSign === 0) return null;
   const absSize = Math.abs(size);
-  const denom = absSize * (sideSign - l * sideSign);
+  if (absSize === 0) return null;
+
+  const initialMargin = leverage > 0 ? notionalSum / leverage : notionalSum;
+  const collateral = Math.max(marginAvailable, initialMargin);
+
+  const denom = absSize * (1 - sideSign * l);
   if (denom === 0) return null;
-  const price = (notionalSum * (sideSign - 1 / leverage)) / denom;
-  if (!isFinite(price) || price < 0) return null;
+
+  const price = (notionalSum - sideSign * collateral) / denom;
+  if (!isFinite(price) || price <= 0) return null;
   return price;
 }
 
 export function estimateLiquidationPrice(input: LiqInput): number | null {
-  const { side, mark, newOrderSize, newOrderPrice, leverage, maxLeverage, addOrders } = input;
+  const { side, mark, newOrderSize, newOrderPrice, leverage, maxLeverage, accountValue, existingMaintenanceMargin, addOrders } = input;
 
   if (!maxLeverage || maxLeverage <= 0 || !leverage || leverage <= 0 || !isFinite(mark) || mark <= 0) {
     return null;
@@ -30,10 +44,14 @@ export function estimateLiquidationPrice(input: LiqInput): number | null {
 
   const l = 1 / (2 * maxLeverage);
   const sideSign = side === "buy" ? 1 : -1;
+  const equity = isFinite(accountValue) && accountValue > 0 ? accountValue : 0;
+  const otherMaintenance = isFinite(existingMaintenanceMargin) && existingMaintenanceMargin > 0 ? existingMaintenanceMargin : 0;
+  const marginAvailable = equity - otherMaintenance;
 
-  // Matches Hyperliquid's own order-ticket preview: the projected liquidation price is
-  // computed for this order (plus the resting ladder behind it) as a fresh position at
-  // the selected leverage, independent of any position already held in this coin.
+  // Cross-margin liquidation is independent of the selected leverage: the whole
+  // account value backs the position, minus the maintenance margin already
+  // reserved by other open cross positions. Leverage only sets the
+  // initial-margin floor used when the account is otherwise too thin to open.
   let size = 0;
   let notionalSum = 0;
 
@@ -55,7 +73,7 @@ export function estimateLiquidationPrice(input: LiqInput): number | null {
 
   for (const bp of breakpoints) {
     if (size !== 0) {
-      const candidate = candidateLiqPrice(size, notionalSum, leverage, l);
+      const candidate = candidateLiqPrice(size, notionalSum, marginAvailable, leverage, l);
       if (candidate == null) return null;
       const reachedFirst = sideSign > 0 ? candidate >= bp.price : candidate <= bp.price;
       if (reachedFirst) return candidate;
@@ -66,5 +84,5 @@ export function estimateLiquidationPrice(input: LiqInput): number | null {
   }
 
   if (size === 0) return null;
-  return candidateLiqPrice(size, notionalSum, leverage, l);
+  return candidateLiqPrice(size, notionalSum, marginAvailable, leverage, l);
 }
