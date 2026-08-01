@@ -724,10 +724,10 @@ function TradeWheelBody({
 
             {entryTop != null && (
               <div
-                className="pointer-events-none absolute inset-x-0 z-[4] border-t border-dashed border-sky-400/60"
+                className="pointer-events-none absolute inset-x-0 z-[4] border-t border-dashed border-white/60"
                 style={{ top: entryTop }}
               >
-                <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-sky-400 px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black">
+                <span className="absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full bg-white px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black">
                   ENTRY
                   {positionSize != null && <span className="tabular-nums">{formatSize(positionSize)}</span>}
                   @ <span className="tabular-nums">{usd(entryPx)}</span>
@@ -764,11 +764,11 @@ function TradeWheelBody({
               return (
                 <div
                   key={order.oid}
-                  className={`pointer-events-none absolute inset-x-0 z-[3] border-t border-dashed ${isBuy ? "border-cyan-400/60" : "border-orange-400/60"}`}
+                  className={`pointer-events-none absolute inset-x-0 z-[3] border-t border-dashed ${isBuy ? "border-green-400/60" : "border-orange-400/60"}`}
                   style={{ top }}
                 >
                   <span
-                    className={`absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black ${isBuy ? "bg-cyan-400" : "bg-orange-400"}`}
+                    className={`absolute right-16 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[11px] font-bold tracking-wide text-black ${isBuy ? "bg-green-400" : "bg-orange-400"}`}
                   >
                     {isBuy ? "BUY" : "SELL"} {orderLabel(order)}
                     <span className="tabular-nums">{formatSize(+order.sz)}</span>
