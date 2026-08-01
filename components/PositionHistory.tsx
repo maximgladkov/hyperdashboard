@@ -22,15 +22,14 @@ function formatDuration(ms: number): string {
   return h % 24 ? `${d}d ${h % 24}h` : `${d}d`;
 }
 
-function formatClosed(ms: number | null, status: PositionRecord["status"]): string {
+function formatClosed(ms: number | null): string {
   if (ms == null) return "Open";
-  const label = new Date(ms).toLocaleString("en-GB", {
+  return new Date(ms).toLocaleString("en-GB", {
     day: "numeric",
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
   });
-  return status === "partial" ? `${label} · partial` : label;
 }
 
 function formatSize(size: number): string {
@@ -69,7 +68,7 @@ const columns: DataGridColumn<PositionRecord>[] = [
     allowsSorting: true,
     minWidth: 150,
     cell: (item) => (
-      <span className="text-muted">{formatClosed(item.closedAt, item.status)}</span>
+      <span className="text-muted">{formatClosed(item.closedAt)}</span>
     ),
   },
   {
@@ -272,7 +271,7 @@ function PositionHistoryBody({ rows, wLbl }: { rows: PositionRecord[]; wLbl: str
     <DataGrid
       aria-label="Position history"
       columns={columns}
-      contentClassName="min-w-[1100px] font-mono text-sm"
+      contentClassName="min-w-[1100px] font-mono text-sm [&>thead>tr>th]:bg-transparent!"
       data={sorted.slice(0, visible)}
       getRowId={(item) => item.id}
       isLoadingMore={false}
