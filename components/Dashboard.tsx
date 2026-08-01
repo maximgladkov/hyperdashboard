@@ -7,6 +7,7 @@ import FundingPanel from "@/components/FundingPanel";
 import MarketTable from "@/components/MarketTable";
 import NotificationPrompt from "@/components/NotificationPrompt";
 import OpenOrders from "@/components/OpenOrders";
+import PositionHistory from "@/components/PositionHistory";
 import Positions from "@/components/Positions";
 import StatsStrip from "@/components/StatsStrip";
 import TradeWheel from "@/components/TradeWheel";
@@ -26,6 +27,7 @@ import {
 } from "@/lib/compute";
 import { hlSocket } from "@/lib/hlws";
 import { fetchPerpMids, fetchRange, info } from "@/lib/hyperliquid";
+import { buildPositionHistory } from "@/lib/positions";
 import { useLeverage, usePositionStep, usePriceStep } from "@/lib/tradeSteps";
 import type {
   AppData,
@@ -422,6 +424,7 @@ export default function Dashboard() {
   const activeFunding = state.winData?.funding || [];
   const activeLedger = state.winData?.ledger || [];
   const coins = byCoin(activeFills);
+  const positionRows = buildPositionHistory(activeFills, activeFunding);
   const totR = coins.reduce((s, c) => s + c.realized, 0);
   const totF = coins.reduce((s, c) => s + c.fees, 0);
   const nTrades = coins.reduce((s, c) => s + c.trades, 0);
@@ -505,6 +508,7 @@ export default function Dashboard() {
           <ChartPanel metric={state.metric} period={state.period} series={series} wLbl={wLbl} />
           <FlowsPanel buckets={bk.arr} daily={bk.daily} wLbl={wLbl} />
           <MarketTable coins={coins} nTrades={nTrades} totF={totF} totR={totR} wLbl={wLbl} />
+          <PositionHistory rows={positionRows} wLbl={wLbl} />
         </div>
       </div>
       <footer className="mt-2 max-w-2xl text-xs leading-relaxed text-muted">

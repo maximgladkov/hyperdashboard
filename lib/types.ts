@@ -57,14 +57,42 @@ export type DelegatorSummary = {
 
 export type Fill = {
   coin: string;
+  px?: string;
+  sz?: string;
+  side?: "B" | "A";
+  dir?: string;
+  startPosition?: string;
   closedPnl?: string;
   fee?: string;
   time: number;
+  oid?: number;
+  hash?: string;
+  tid?: number;
+  crossed?: boolean;
 };
 
 export type FundingEvent = {
   time: number;
-  delta?: { usdc?: string };
+  delta?: { usdc?: string; coin?: string };
+};
+
+export type PositionRecord = {
+  id: string;
+  coin: string;
+  side: "long" | "short";
+  status: "closed" | "open" | "partial";
+  openedAt: number;
+  closedAt: number | null;
+  size: number;
+  notional: number;
+  avgEntry: number;
+  avgClose: number | null;
+  realized: number;
+  fees: number;
+  funding: number;
+  net: number;
+  roi: number;
+  fills: number;
 };
 
 export type LedgerDelta = {
