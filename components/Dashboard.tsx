@@ -11,6 +11,7 @@ import Positions from "@/components/Positions";
 import StatsStrip from "@/components/StatsStrip";
 import TradeWheel from "@/components/TradeWheel";
 import TrailWidget from "@/components/TrailWidget";
+import TunnelWidget from "@/components/TunnelWidget";
 import {
   PERIODS,
   accountBreakdown,
@@ -489,6 +490,7 @@ export default function Dashboard() {
           <Positions key={`positions-${resumeEpoch}`} address={state.currentUser!} positions={positions} />
           <OpenOrders key={`orders-${state.currentUser}-${resumeEpoch}`} address={state.currentUser!} />
           <TrailWidget key={state.currentUser} address={state.currentUser!} />
+          <TunnelWidget key={`tunnel-${state.currentUser}`} address={state.currentUser!} />
           <FundingPanel fundTot={fundTot} fundingCount={activeFunding.length} wLbl={wLbl} />
           <CapitalFlows
             dep={flows.dep}

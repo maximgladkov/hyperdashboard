@@ -180,6 +180,9 @@ function TradeWheelBody({
   const [stopPx, setStopPx] = useState<number | null>(null);
   const [positionSize, setPositionSize] = useState<number | null>(null);
   const [positionSide, setPositionSide] = useState<"long" | "short" | null>(null);
+  const [tunnelLow, setTunnelLow] = useState<number | null>(null);
+  const [tunnelHigh, setTunnelHigh] = useState<number | null>(null);
+  const [tunnelEnabled, setTunnelEnabled] = useState(false);
   const [orders, setOrders] = useState<OpenOrder[]>([]);
   const [size, setSize] = useTradeSize();
   const [pending, setPending] = useState<"buy" | "sell" | null>(null);
@@ -213,6 +216,9 @@ function TradeWheelBody({
       setStopPx(null);
       setPositionSize(null);
       setPositionSide(null);
+      setTunnelLow(null);
+      setTunnelHigh(null);
+      setTunnelEnabled(false);
       pollTrailRef.current = () => { };
       return;
     }
@@ -227,17 +233,26 @@ function TradeWheelBody({
           setStopPx(null);
           setPositionSize(null);
           setPositionSide(null);
+          setTunnelLow(null);
+          setTunnelHigh(null);
+          setTunnelEnabled(false);
           return;
         }
         setEntryPx(state.position?.entryPx ?? null);
         setStopPx(state.stop?.triggerPx ?? null);
         setPositionSize(state.position?.size ?? null);
         setPositionSide(state.position?.side ?? null);
+        setTunnelLow(state.tunnel?.low ?? null);
+        setTunnelHigh(state.tunnel?.high ?? null);
+        setTunnelEnabled(Boolean(state.tunnel?.enabled));
       } catch {
         setEntryPx(null);
         setStopPx(null);
         setPositionSize(null);
         setPositionSide(null);
+        setTunnelLow(null);
+        setTunnelHigh(null);
+        setTunnelEnabled(false);
       }
     };
     pollTrailRef.current = () => {
@@ -651,6 +666,12 @@ function TradeWheelBody({
   const entryTop = entryPx != null ? contentTop(entryPx) : null;
   const stopTop = stopPx != null ? contentTop(stopPx) : null;
   const liqTop = liquidationPx != null ? contentTop(liquidationPx) : null;
+  const tunnelHighTop = tunnelHigh != null ? contentTop(tunnelHigh) : null;
+  const tunnelLowTop = tunnelLow != null ? contentTop(tunnelLow) : null;
+  const tunnelBand =
+    tunnelHighTop != null && tunnelLowTop != null && tunnelLowTop > tunnelHighTop
+      ? { top: tunnelHighTop, height: tunnelLowTop - tunnelHighTop }
+      : null;
 
   const orderLines =
     value == null
@@ -721,6 +742,40 @@ function TradeWheelBody({
                 <path d="M14 18L0 9H14Z" fill="var(--accent)" />
               </svg>
             </div>
+
+            {tunnelBand && (
+              <div
+                aria-hidden
+                className={`pointer-events-none absolute inset-x-0 z-[2] ${tunnelEnabled ? "bg-accent/15" : "bg-foreground/5"}`}
+                style={{ top: tunnelBand.top, height: tunnelBand.height }}
+              />
+            )}
+
+            {tunnelHighTop != null && (
+              <div
+                className={`pointer-events-none absolute inset-x-0 z-[2] border-t border-dashed ${tunnelEnabled ? "border-accent/50" : "border-foreground/20"}`}
+                style={{ top: tunnelHighTop }}
+              >
+                <span
+                  className={`absolute left-3 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[10px] font-bold tracking-wide ${tunnelEnabled ? "bg-accent text-accent-foreground" : "bg-foreground/20 text-foreground/60"}`}
+                >
+                  HIGH <span className="tabular-nums">{usd(tunnelHigh)}</span>
+                </span>
+              </div>
+            )}
+
+            {tunnelLowTop != null && (
+              <div
+                className={`pointer-events-none absolute inset-x-0 z-[2] border-t border-dashed ${tunnelEnabled ? "border-accent/50" : "border-foreground/20"}`}
+                style={{ top: tunnelLowTop }}
+              >
+                <span
+                  className={`absolute left-3 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[10px] font-bold tracking-wide ${tunnelEnabled ? "bg-accent text-accent-foreground" : "bg-foreground/20 text-foreground/60"}`}
+                >
+                  LOW <span className="tabular-nums">{usd(tunnelLow)}</span>
+                </span>
+              </div>
+            )}
 
             {entryTop != null && (
               <div

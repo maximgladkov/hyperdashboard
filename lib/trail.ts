@@ -1,5 +1,20 @@
 export type TrailType = "pct" | "abs";
 
+export interface TunnelOrderState {
+  orderId: number;
+  limitPx: number;
+  size: number;
+}
+
+export interface TunnelState {
+  enabled: boolean;
+  low: number;
+  high: number;
+  size: number;
+  buy: TunnelOrderState | null;
+  sell: TunnelOrderState | null;
+}
+
 export interface TenantState {
   address: string;
   coin: string;
@@ -18,6 +33,7 @@ export interface TenantState {
     value: number;
     enabled: boolean;
   };
+  tunnel?: TunnelState | null;
   lastAction: string;
   updatedAt: string;
 }
@@ -32,6 +48,20 @@ export type TrailConfigWrite = {
   type?: TrailType;
   value?: number;
   enabled?: boolean;
+};
+
+export type TunnelConfigInput = {
+  enabled?: unknown;
+  low?: unknown;
+  high?: unknown;
+  size?: unknown;
+};
+
+export type TunnelConfigWrite = {
+  enabled?: boolean;
+  low?: number;
+  high?: number;
+  size?: number;
 };
 
 export function parseEnabled(v: unknown): boolean | undefined {
@@ -70,6 +100,44 @@ export function validateConfig(
     const b = parseEnabled(input.enabled);
     if (b === undefined) errors.push("enabled must be a recognizable boolean");
     else ok.enabled = b;
+  }
+
+  return { ok, errors };
+}
+
+export function validateTunnelConfig(input: TunnelConfigInput): {
+  ok: TunnelConfigWrite;
+  errors: string[];
+} {
+  const ok: TunnelConfigWrite = {};
+  const errors: string[] = [];
+
+  if (input.enabled !== undefined) {
+    const b = parseEnabled(input.enabled);
+    if (b === undefined) errors.push("enabled must be a recognizable boolean");
+    else ok.enabled = b;
+  }
+
+  if (input.low !== undefined) {
+    const n = Number(input.low);
+    if (!Number.isFinite(n) || n <= 0) errors.push("low must be a positive number");
+    else ok.low = n;
+  }
+
+  if (input.high !== undefined) {
+    const n = Number(input.high);
+    if (!Number.isFinite(n) || n <= 0) errors.push("high must be a positive number");
+    else ok.high = n;
+  }
+
+  if (input.size !== undefined) {
+    const n = Number(input.size);
+    if (!Number.isFinite(n) || n <= 0) errors.push("size must be a positive number");
+    else ok.size = n;
+  }
+
+  if (ok.low !== undefined && ok.high !== undefined && ok.high <= ok.low) {
+    errors.push("high must be greater than low");
   }
 
   return { ok, errors };
