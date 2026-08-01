@@ -68,7 +68,7 @@ const columns: DataGridColumn<PositionRecord>[] = [
     allowsSorting: true,
     minWidth: 150,
     cell: (item) => (
-      <span className="text-muted">{formatClosed(item.closedAt)}</span>
+      <span className="whitespace-nowrap text-muted">{formatClosed(item.closedAt)}</span>
     ),
   },
   {

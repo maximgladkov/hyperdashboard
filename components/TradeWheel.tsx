@@ -666,8 +666,8 @@ function TradeWheelBody({
   const entryTop = entryPx != null ? contentTop(entryPx) : null;
   const stopTop = stopPx != null ? contentTop(stopPx) : null;
   const liqTop = liquidationPx != null ? contentTop(liquidationPx) : null;
-  const tunnelHighTop = tunnelHigh != null ? contentTop(tunnelHigh) : null;
-  const tunnelLowTop = tunnelLow != null ? contentTop(tunnelLow) : null;
+  const tunnelHighTop = tunnelEnabled && tunnelHigh != null ? contentTop(tunnelHigh) : null;
+  const tunnelLowTop = tunnelEnabled && tunnelLow != null ? contentTop(tunnelLow) : null;
   const tunnelBand =
     tunnelHighTop != null && tunnelLowTop != null && tunnelLowTop > tunnelHighTop
       ? { top: tunnelHighTop, height: tunnelLowTop - tunnelHighTop }
@@ -746,19 +746,17 @@ function TradeWheelBody({
             {tunnelBand && (
               <div
                 aria-hidden
-                className={`pointer-events-none absolute inset-x-0 z-[2] ${tunnelEnabled ? "bg-accent/15" : "bg-foreground/5"}`}
+                className="pointer-events-none absolute inset-x-0 z-[2] bg-accent/15"
                 style={{ top: tunnelBand.top, height: tunnelBand.height }}
               />
             )}
 
             {tunnelHighTop != null && (
               <div
-                className={`pointer-events-none absolute inset-x-0 z-[2] border-t border-dashed ${tunnelEnabled ? "border-accent/50" : "border-foreground/20"}`}
+                className="pointer-events-none absolute inset-x-0 z-[2] border-t border-dashed border-accent/50"
                 style={{ top: tunnelHighTop }}
               >
-                <span
-                  className={`absolute left-3 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[10px] font-bold tracking-wide ${tunnelEnabled ? "bg-accent text-accent-foreground" : "bg-foreground/20 text-foreground/60"}`}
-                >
+                <span className="absolute left-3 flex -translate-y-1/2 items-center gap-1 rounded-full bg-accent px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-accent-foreground">
                   HIGH <span className="tabular-nums">{usd(tunnelHigh)}</span>
                 </span>
               </div>
@@ -766,12 +764,10 @@ function TradeWheelBody({
 
             {tunnelLowTop != null && (
               <div
-                className={`pointer-events-none absolute inset-x-0 z-[2] border-t border-dashed ${tunnelEnabled ? "border-accent/50" : "border-foreground/20"}`}
+                className="pointer-events-none absolute inset-x-0 z-[2] border-t border-dashed border-accent/50"
                 style={{ top: tunnelLowTop }}
               >
-                <span
-                  className={`absolute left-3 flex -translate-y-1/2 items-center gap-1 rounded-full px-2 py-1 font-mono text-[10px] font-bold tracking-wide ${tunnelEnabled ? "bg-accent text-accent-foreground" : "bg-foreground/20 text-foreground/60"}`}
-                >
+                <span className="absolute left-3 flex -translate-y-1/2 items-center gap-1 rounded-full bg-accent px-2 py-1 font-mono text-[10px] font-bold tracking-wide text-accent-foreground">
                   LOW <span className="tabular-nums">{usd(tunnelLow)}</span>
                 </span>
               </div>
