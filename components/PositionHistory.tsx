@@ -77,13 +77,8 @@ const columns: DataGridColumn<PositionRecord>[] = [
     accessorKey: "size",
     allowsSorting: true,
     align: "end",
-    minWidth: 120,
-    cell: (item) => (
-      <span className="flex flex-col items-end leading-tight">
-        <span className="text-foreground">{formatSize(item.size)}</span>
-        <span className="text-xs text-muted">${formatSize(item.notional)}</span>
-      </span>
-    ),
+    minWidth: 90,
+    cell: (item) => <span className="text-foreground">{formatSize(item.size)}</span>,
   },
   {
     id: "avgEntry",
@@ -271,7 +266,7 @@ function PositionHistoryBody({ rows, wLbl }: { rows: PositionRecord[]; wLbl: str
     <DataGrid
       aria-label="Position history"
       columns={columns}
-      contentClassName="min-w-[1100px] font-mono text-sm [&>thead>tr>th]:bg-transparent!"
+      contentClassName="min-w-[1100px] font-mono text-sm [&>thead>tr>th]:sticky [&>thead>tr>th]:top-0 [&>thead>tr>th]:z-[3] [&>thead>tr>th]:bg-surface [&>thead>tr>th[data-pinned]]:z-[4]"
       data={sorted.slice(0, visible)}
       getRowId={(item) => item.id}
       isLoadingMore={false}
