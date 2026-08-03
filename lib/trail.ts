@@ -11,6 +11,8 @@ export interface TunnelState {
   low: number;
   high: number;
   size: number;
+  baseline: number;
+  inventory: number;
   buy: TunnelOrderState | null;
   sell: TunnelOrderState | null;
 }

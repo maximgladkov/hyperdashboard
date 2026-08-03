@@ -51,6 +51,7 @@ export default function TunnelWidget({ address }: { address: string }) {
   const [localSize, setLocalSize] = useState(defaultSize);
   const [boundsReady, setBoundsReady] = useState(false);
   const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingWriteRef = useRef<{ enabled?: boolean; low?: number; high?: number; size?: number }>({});
   const syncOnNextPollRef = useRef(true);
   const mountedRef = useRef(true);
   const defaultsSeededRef = useRef(false);
@@ -132,8 +133,14 @@ export default function TunnelWidget({ address }: { address: string }) {
 
   const scheduleWrite = useCallback(
     (fields: { enabled?: boolean; low?: number; high?: number; size?: number }, immediate = false) => {
+      pendingWriteRef.current = { ...pendingWriteRef.current, ...fields };
       if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
-      const run = () => writeTunnelConfig(address, fields);
+      const run = () => {
+        const payload = pendingWriteRef.current;
+        pendingWriteRef.current = {};
+        writeTimerRef.current = null;
+        void writeTunnelConfig(address, payload);
+      };
       if (immediate) run();
       else writeTimerRef.current = setTimeout(run, WRITE_DEBOUNCE_MS);
     },
@@ -362,6 +369,19 @@ function TunnelSummary({ state }: { state: TenantState | null }) {
             {tunnel?.enabled ? "ON" : "OFF"}
           </Chip>
         </span>
+      </div>
+
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-muted">Inventory</span>
+        {tunnel ? (
+          <span className="font-mono">
+            <NumberFlow value={tunnel.inventory} />
+            <span className="text-muted"> / ±</span>
+            <NumberFlow value={tunnel.size} />
+          </span>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-3">

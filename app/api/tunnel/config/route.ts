@@ -23,6 +23,10 @@ const FIELD_MAP: Record<string, string> = {
   size: "tunnelSize",
 };
 
+async function clearTunnelBaseline(redis: ReturnType<typeof getRedis>, address: string): Promise<void> {
+  await redis.del(`bot:tunnel:${address}`);
+}
+
 export async function POST(request: NextRequest) {
   let body: ConfigBody;
   try {
@@ -42,11 +46,15 @@ export async function POST(request: NextRequest) {
   try {
     if (body.reset === "all") {
       await redis.hdel(key, "tunnelEnabled", "tunnelLow", "tunnelHigh", "tunnelSize");
+      await clearTunnelBaseline(redis, address);
       return NextResponse.json({ ok: true });
     }
 
     if (body.reset && RESET_FIELDS.has(body.reset)) {
       await redis.hdel(key, FIELD_MAP[body.reset]!);
+      if (body.reset === "enabled") {
+        await clearTunnelBaseline(redis, address);
+      }
       return NextResponse.json({ ok: true });
     }
 
@@ -71,6 +79,9 @@ export async function POST(request: NextRequest) {
     if (ok.size !== undefined) fields.tunnelSize = String(ok.size);
 
     await redis.hset(key, fields);
+    if (ok.enabled !== undefined) {
+      await clearTunnelBaseline(redis, address);
+    }
     return NextResponse.json({ ok: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
